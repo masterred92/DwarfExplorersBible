@@ -1,0 +1,45 @@
+# Packaging workflow. PUBLISHING IS OFF: this only runs when started by hand (Actions > Package > Run workflow),
+# runs the tests, builds the zip with BigWigsMods/packager in dry-run mode (-d, no uploads) and keeps it as a
+# workflow artifact. Nothing goes to CurseForge, Wago or GitHub Releases.
+#
+# To turn publishing on later (after Kenny creates the Wago / CurseForge projects):
+#   1. put the IDs in the TOC (## X-Wago-ID / ## X-Curse-Project-ID, remove the leading "# ")
+#   2. add the repo secrets WAGO_API_TOKEN (and CF_API_TOKEN for CurseForge)
+#   3. add the tag trigger below (push: tags: ['v*']), delete the "-d" argument and the artifact step.
+name: Package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: leafo/gh-actions-lua@v13.1.0
+        with:
+          luaVersion: "5.1.5"
+      - uses: leafo/gh-actions-luarocks@v6.1.1
+      - name: Install luacheck
+        run: luarocks install luacheck
+      - name: Syntax, lint, mock-client tests
+        run: sh tests/run.sh
+
+  package:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # full history for the changelog
+      - name: Build the zip (dry run, no uploads)
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -d
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: .release/*.zip

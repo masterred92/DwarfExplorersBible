@@ -1,0 +1,13 @@
+# BigWigsMods/packager config. Publishing is off until the Wago / CurseForge projects exist (see release.yml).
+package-as: RecipeMaster
+
+ignore:
+  - tests
+  - tools
+  - .luacheckrc
+  - media/logo.png
+  - media/screenshots
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown

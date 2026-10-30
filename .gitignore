@@ -1,0 +1,6 @@
+.release/
+.env
+dist/
+.lua/
+.luarocks/
+__pycache__/

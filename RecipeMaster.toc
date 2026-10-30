@@ -1,0 +1,19 @@
+## Interface: 16001
+## Title: Recipe Master
+## Notes: Pick a material and see everything it crafts into, with auction prices, profit and crafting chains.
+## Author: Kenny
+## Version: 1.0.0
+## SavedVariables: KennyRecipeMasterDB
+## OptionalDeps: PriceLog, Auctionator, TradeSkillMaster, Auc-Advanced, LibDataBroker-1.1
+## X-License: MIT
+## IconTexture: Interface\AddOns\RecipeMaster\media\icon
+# ## X-Curse-Project-ID: (add when the CurseForge project exists)
+# ## X-Wago-ID: (add when the Wago project exists)
+
+Compat.lua
+Core.lua
+Data.lua
+Prices.lua
+RecipeMaster.lua
+UI.lua
+Broker.lua
