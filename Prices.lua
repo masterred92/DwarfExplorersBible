@@ -40,7 +40,9 @@ P.Register({ id = "tsm", label = "TSM",
 P.Register({ id = "auctioneer", label = "Auctioneer",
   available = function() return type(AucAdvanced) == "table" and type(AucAdvanced.API) == "table"
     and type(AucAdvanced.API.GetMarketValue) == "function" end,
-  get = function(id) return pos(AucAdvanced.API.GetMarketValue("item:" .. id)) end })
+  -- Pass the numeric itemID: GetMarketValue turns a number into a link itself. A bare "item:123" string is
+  -- not a hyperlink, so Auctioneer's DecodeLink rejects it and prints "Link is not item" to chat.
+  get = function(id) return pos(AucAdvanced.API.GetMarketValue(id)) end })
 
 -- Our own cache, filled from AH searches you do yourself (always available).
 P.Register({ id = "scan", label = "What Can I Make? scan",
@@ -85,4 +87,36 @@ function P.Remember(itemID, unit, now)
   if not (P.cache and itemID and unit) then return end
   local r = P.cache[itemID]
   if not r or (now - (r.t or 0)) > 3600 or unit < r.p then P.cache[itemID] = { p = unit, t = now } end
+end
+
+-- Vendor prices ------------------------------------------------------------------------------
+-- Per-unit price at a vendor, for reagents a vendor sells (thread, flux, vials, spices, dyes...).
+-- Learned from merchant windows you open (unlimited stock only, like Auctionator), else the bundled Forever price.
+function P.Vendor(itemID)
+  local v = P.vendorCache and P.vendorCache[itemID]
+  if v then return v end
+  local D = ns.Data
+  return D and D.buy and D.buy[itemID] or nil
+end
+
+-- Reads the open merchant window. Called on MERCHANT_SHOW; reads only, buys nothing.
+function P.ReadMerchant()
+  if not (P.vendorCache and GetMerchantNumItems and GetMerchantItemID) then return 0 end
+  local n = 0
+  for i = 1, (C.SafeNumber(GetMerchantNumItems()) or 0) do
+    local id = C.SafeNumber(GetMerchantItemID(i))
+    local price, stack, avail
+    if C_MerchantFrame and C_MerchantFrame.GetItemInfo then
+      local info = C_MerchantFrame.GetItemInfo(i)
+      if info and not info.currencyID and not info.hasExtendedCost then price, stack, avail = info.price, info.stackCount, info.numAvailable end
+    elseif GetMerchantItemInfo then
+      local _, _, p, s, a, _, _, ext = GetMerchantItemInfo(i)
+      if not ext then price, stack, avail = p, s, a end
+    end
+    price, stack, avail = C.SafeNumber(price), C.SafeNumber(stack), C.SafeNumber(avail)
+    if id and price and price > 0 and stack and stack > 0 and avail == -1 then
+      P.vendorCache[id] = math.max(1, math.floor(price / stack + 0.5)); n = n + 1
+    end
+  end
+  return n
 end

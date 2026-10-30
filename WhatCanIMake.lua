@@ -23,10 +23,11 @@ local function addRecipe(r)
 end
 
 function M.ParseRow(row, profs)
-  local product, mn, mx, prof, skill, rec, rg = row:match("^(%d+);(%d+);(%d+);(%d+);(%d+);(%d+);(.*)$")
+  local product, mn, mx, prof, yellow, grey, spell, rg = row:match("^(%d+);(%d+);(%d+);(%d+);(%d+);(%d+);(%d+);(.*)$")
   if not product then return nil end
+  -- yellow/grey are the skill levels where the recipe turns yellow and grey in Forever's profession window.
   local r = { product = tonumber(product), min = tonumber(mn), max = tonumber(mx), prof = profs[tonumber(prof)] or "?",
-    skill = tonumber(skill), recipeItem = tonumber(rec) ~= 0 and tonumber(rec) or nil, reagents = {}, origin = "data" }
+    skill = tonumber(yellow), grey = tonumber(grey), spell = tonumber(spell), reagents = {}, origin = "data" }
   for id, n in rg:gmatch("(%d+):(%d+)") do r.reagents[#r.reagents + 1] = { id = tonumber(id), n = tonumber(n) } end
   return r
 end
@@ -85,17 +86,39 @@ end
 -- Prices and profit -------------------------------------------------------------------------
 function M.Price(id) return P.Get(id, settings and settings.sources) end
 
--- { cost, value, profit, missing } ; missing = true when a reagent or the product has no price.
+-- What a reagent costs you: the vendor price if a vendor sells it (as Auctionator's crafting module does),
+-- otherwise the auction price. Returns price, label.
+function M.ReagentPrice(id)
+  local v = P.Vendor(id)
+  if v then return v, "vendor" end
+  local p, label = M.Price(id)
+  return p, label
+end
+
+-- { cost, value, profit, missing }. cost = sum(reagent unit price x count); value = product price x items made
+-- per craft (average of min/max) less the AH cut. profit is nil unless every reagent AND the product are priced,
+-- so a missing price can never make a recipe look more profitable than it is.
 function M.Profit(r)
   local cost, missing = 0, false
   for _, g in ipairs(r.reagents) do
-    local p = M.Price(g.id)
+    local p = M.ReagentPrice(g.id)
     if p then cost = cost + p * g.n else missing = true end
   end
   local pp = M.Price(r.product)
   local value = pp and math.floor(pp * (r.min + r.max) / 2 * (1 - (settings and settings.ahCut or 0.05))) or nil
+  local profit = (value and not missing) and (value - cost) or nil
   if not value then missing = true end
-  return { cost = cost, value = value, profit = value and (value - cost) or nil, missing = missing }
+  return { cost = cost, value = value, profit = profit, missing = missing }
+end
+
+-- Recipe difficulty for your skill, the way the profession window colours it.
+function M.Difficulty(r)
+  local s = M.Skill(r.prof)
+  if not (s and r.skill and r.grey and r.grey > 0) then return nil end
+  if s < r.skill then return "orange" end
+  if s < (r.skill + r.grey) / 2 then return "yellow" end
+  if s < r.grey then return "green" end
+  return "grey"
 end
 
 -- Recipes that use itemID, best profit first (unpriced last), then skill.
@@ -168,11 +191,24 @@ local function addLines(tooltip, itemID)
 end
 M.AddTooltipLines = addLines
 
+local tipDone, tipHooked = setmetatable({}, { __mode = "k" }), {}
 local function OnItemTooltip(tooltip, data)
   if not db or not settings.tooltip or not data then return end
   if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
   local itemID = C.SafeNumber(data.id)
-  if itemID then Core.SafeCall("tooltip", addLines, tooltip, itemID) end
+  -- The post-call can run more than once for one tooltip build (e.g. a recipe and the item it makes, or a
+  -- refresh); add our lines once per item per build. Kept in our own weak table, never on Blizzard's frame.
+  local done = tipDone[tooltip]
+  if itemID and done and done[itemID] then return end
+  if itemID then
+    if not done then
+      done = {}; tipDone[tooltip] = done
+      if not tipHooked[tooltip] and tooltip.HookScript then
+        tipHooked[tooltip] = true
+        tooltip:HookScript("OnTooltipCleared", function(t) tipDone[t] = nil end)
+      end
+    end
+    done[itemID] = true Core.SafeCall("tooltip", addLines, tooltip, itemID) end
 end
 
 -- Events ---------------------------------------------------------------------------------
@@ -189,11 +225,23 @@ function M.Init()
   local rk = C.RealmFaction()
   db.cache[rk] = db.cache[rk] or {}
   P.cache = db.cache[rk]
+  db.vendor = db.vendor or {}
+  P.vendorCache = db.vendor
   M.BuildIndex()
 end
 
 local f = CreateFrame("Frame")
+local scanPending = false
+local function queueScan()
+  -- TRADE_SKILL_LIST_UPDATE fires on every filter/search change; scan at most once per half second.
+  if scanPending then return end
+  scanPending = true
+  local function run() scanPending = false; if not C.InCombat() then Core.SafeCall("tradeskill", M.ScanTradeSkill) end end
+  if C_Timer and C_Timer.After then C_Timer.After(0.5, run) else run() end
+end
+M.QueueScan = queueScan
 f:RegisterEvent("ADDON_LOADED")
+f:RegisterEvent("MERCHANT_SHOW")
 f:RegisterEvent("PLAYER_LOGIN")
 f:RegisterEvent("TRADE_SKILL_SHOW")
 f:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
@@ -201,7 +249,10 @@ f:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
 f:RegisterEvent("COMMODITY_SEARCH_RESULTS_UPDATED")
 f:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == ADDON then
+    f:UnregisterEvent("ADDON_LOADED")
     M.Init()
+  elseif event == "MERCHANT_SHOW" then
+    Core.SafeCall("merchant", P.ReadMerchant)
   elseif event == "PLAYER_LOGIN" then
     if TooltipDataProcessor and Enum and Enum.TooltipDataType then
       TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, OnItemTooltip)
@@ -215,7 +266,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
       end)
     end
   elseif event == "TRADE_SKILL_SHOW" or event == "TRADE_SKILL_LIST_UPDATE" then
-    if not C.InCombat() then Core.SafeCall("tradeskill", M.ScanTradeSkill) end
+    queueScan()
   elseif event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" then
     Core.SafeCall("browse", function() for _, r in ipairs(C.AHBrowse()) do P.Remember(r.itemID, r.price, C.Now()) end end)
   elseif event == "COMMODITY_SEARCH_RESULTS_UPDATED" then
@@ -236,7 +287,8 @@ SlashCmdList.KENNYWHATCANIMAKE = function(msg)
   if lc == "" then if M.Toggle then M.Toggle() end
   elseif lc == "sources" then
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > ") .. ". Installed: " .. table.concat(P.Installed(), ", "))
-  elseif lc == "prefer" and P.byId[arg] then
+  elseif lc == "prefer" and P.byId[arg:lower()] then
+    arg = arg:lower()
     settings.sources = arg .. "," .. settings.sources
     settings.sources = table.concat(P.Order(settings.sources), ",")
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > "))

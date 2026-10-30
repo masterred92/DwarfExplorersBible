@@ -45,17 +45,23 @@ for _, e in ipairs(uses) do found[e.r.product] = e end
 M.check(found[1251] and found[2996], "linen cloth -> bandage and bolt")
 M.check(found[1251].r.prof == "First Aid", "profession on the recipe")
 
--- Learned scan
-M.fire("TRADE_SKILL_SHOW")
+-- Learned scan (debounced: a burst of list updates scans once)
+local scans = 0
+local orig = C_TradeSkillUI.GetFilteredRecipeIDs
+C_TradeSkillUI.GetFilteredRecipeIDs = function() scans = scans + 1; return orig() end
+M.fire("TRADE_SKILL_SHOW"); M.fire("TRADE_SKILL_LIST_UPDATE"); M.fire("TRADE_SKILL_LIST_UPDATE")
+M.advance(1)
+M.check(scans == 1, "profession scan debounced to one per burst")
 M.check(RM.Knows(found[1251].r), "bandage known after profession scan")
 M.check(not RM.Knows(found[2996].r), "bolt not known")
 M.check(RM.Skill("First Aid") == 40, "skill level stored")
+M.check(RM.Difficulty(found[1251].r) == "yellow", "difficulty from Forever's yellow/grey levels (30/60, you 40)")
 M.check(RM.byProduct[990001] and RM.byProduct[990001][1].origin == "scan", "recipe missing from data added from your own window")
 linked = true
 KennyWhatCanIMakeDB.chars["TestRealm-Horde-Kenny"].learned[2996] = nil
 C_TradeSkillUI.GetFilteredRecipeIDs = function() return { 1 } end
 C_TradeSkillUI.GetRecipeSchematic = function() return { outputItemID = 2996, reagentSlotSchematics = {} } end
-M.fire("TRADE_SKILL_SHOW")
+M.fire("TRADE_SKILL_SHOW"); M.advance(1)
 M.check(not RM.Knows(found[2996].r), "linked profession windows are ignored")
 linked = false
 
@@ -84,7 +90,9 @@ p, label = RM.Price(2589)
 M.check(p == 31 and label == "TSM", "TSM DBMarket preferred")
 M.check(RM.Price(2996) == 950, "TSM falls back to DBMinBuyout")
 -- Auctioneer
-AucAdvanced = { API = { GetMarketValue = function(link) if link == "item:2589" then return 32, 10 end end } }
+-- GetMarketValue must get the numeric id: a bare "item:N" string makes Auctioneer print "Link is not item".
+AucAdvanced = { API = { GetMarketValue = function(link) assert(type(link) == "number", "Auctioneer needs an itemID or a real link")
+  if link == 2589 then return 32, 10 end end } }
 SlashCmdList.KENNYWHATCANIMAKE("order auctioneer,scan")
 p, label = RM.Price(2589)
 M.check(p == 32 and label == "Auctioneer", "Auctioneer source")
@@ -106,6 +114,26 @@ M.check(RM.Price(2589) == 25, "falls back to scan cache when addons are gone")
 local bolt = RM.Profit(found[2996].r)
 M.check(bolt.cost == 50 and bolt.value == 855 and bolt.profit == 805 and not bolt.missing, "profit after AH cut")
 M.check(RM.UsesOf(2589)[1].r.product == 2996, "priced, profitable recipe sorted first")
+-- A recipe with an unpriced reagent shows no profit (never an overstated one).
+local partial = { product = 2996, min = 1, max = 1, reagents = { { id = 2589, n = 2 }, { id = 999999, n = 1 } } }
+local pp = RM.Profit(partial)
+M.check(pp.profit == nil and pp.missing and pp.cost == 50, "missing reagent price -> no profit figure")
+-- Vendor-sold reagents use the vendor price (bundled Forever price), like Auctionator's crafting module.
+local vp, vl = RM.ReagentPrice(2320)
+M.check(vp == 10 and vl == "vendor", "Coarse Thread priced at the vendor (10c)")
+-- Stack counts: 2x reagent at its price, product made x2 per craft -> value doubles.
+local twice = RM.Profit({ product = 2996, min = 2, max = 2, reagents = { { id = 2589, n = 2 } } })
+M.check(twice.cost == 50 and twice.value == 1710 and twice.profit == 1660, "items-per-craft and reagent counts in profit")
+-- Merchant window read (unlimited stock only, extended-cost items ignored).
+GetMerchantNumItems = function() return 3 end
+GetMerchantItemID = function(i) return ({ 2320, 2321, 4470 })[i] end
+C_MerchantFrame = { GetItemInfo = function(i)
+  if i == 1 then return { price = 50, stackCount = 5, numAvailable = -1 } end
+  if i == 2 then return { price = 100, stackCount = 1, numAvailable = 3 } end
+  return { price = 10, stackCount = 1, numAvailable = -1, hasExtendedCost = true } end }
+M.fire("MERCHANT_SHOW")
+M.check(RM.ReagentPrice(2320) == 10 and P.vendorCache[2320] == 10 and P.vendorCache[2321] == nil and P.vendorCache[4470] == nil,
+  "merchant prices learned per unit, limited/extended-cost skipped")
 
 -- Chains: linen -> bolt -> (bolt is used in tailoring) ...
 local chain = RM.Chain(2589, 2)
@@ -137,6 +165,9 @@ alt = false
 
 -- Tooltip
 postCalls[1](GameTooltip, { id = 2589 })
+local before = #tipLines
+postCalls[1](GameTooltip, { id = 2589 })
+M.check(#tipLines == before, "tooltip lines not added twice in one tooltip build")
 local joined = table.concat(tipLines, "\n")
 M.check(joined:find("Used in %d+ recipes"), "tooltip 'used in N recipes'")
 M.check(joined:find("What Can I Make? scan", 1, true), "tooltip shows the price source")

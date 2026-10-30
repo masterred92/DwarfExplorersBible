@@ -17,14 +17,16 @@ function M.RowText(e)
   local qty = r.min == r.max and tostring(r.min) or (r.min .. "-" .. r.max)
   local known = M.Knows(r) and "|cff33ff33known|r" or "|cffff5555not known|r"
   local skill = M.Skill(r.prof)
-  local skillTxt = r.skill > 0 and (" " .. r.skill) or ""
-  if skill and r.skill > skill then skillTxt = " |cffff8800" .. r.skill .. " (you " .. skill .. ")|r" end
+  local DIFF = { orange = "|cffff8040", yellow = "|cffffff00", green = "|cff40bf40", grey = "|cff808080" }
+  local d = M.Difficulty(r)
+  local skillTxt = (r.skill or 0) > 0 and (" " .. r.skill) or ""
+  if d then skillTxt = " " .. DIFF[d] .. (r.skill or 0) .. (d == "orange" and (" (you " .. skill .. ")") or "") .. "|r" end
   local parts = {}
   for _, g in ipairs(r.reagents) do parts[#parts + 1] = g.n .. "x " .. M.Name(g.id) end
   local money
   if pr.profit then
-    money = (pr.profit >= 0 and "|cff33ff33+" or "|cffff5555-") .. C.Money(math.abs(pr.profit)) .. "|r" .. (pr.missing and " |cff888888(partial)|r" or "")
-  else money = "|cff888888cost " .. C.Money(pr.cost) .. "|r" end
+    money = (pr.profit >= 0 and "|cff33ff33+" or "|cffff5555-") .. C.Money(math.abs(pr.profit)) .. "|r"
+  else money = "|cff888888cost " .. C.Money(pr.cost) .. (pr.missing and " (some prices missing)" or "") .. "|r" end
   local nextN = #(M.byReagent[r.product] or {})
   local line1 = ("%s x%s  |cffaaaaaa%s%s|r  %s  %s"):format(M.Name(r.product), qty, r.prof, skillTxt, known, money)
   local line2 = "|cffbbbbbb" .. table.concat(parts, ", ") .. (nextN > 0 and ("  |cff66ccff> used in " .. nextN .. "|r") or "") .. "|r"
@@ -63,9 +65,9 @@ local function rowTooltip(row)
   if not e then return end
   GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
   GameTooltip:AddLine(M.Name(e.r.product))
-  GameTooltip:AddLine(e.r.prof .. (e.r.skill > 0 and (" " .. e.r.skill) or "") .. (e.r.origin == "scan" and "  (from your profession window)" or ""), 0.7, 0.7, 0.7)
+  GameTooltip:AddLine(e.r.prof .. ((e.r.skill or 0) > 0 and (" (yellow " .. e.r.skill .. ", grey " .. (e.r.grey or "?") .. ")") or "") .. (e.r.origin == "scan" and "  (from your profession window)" or ""), 0.7, 0.7, 0.7)
   for _, g in ipairs(e.r.reagents) do
-    local p, label = M.Price(g.id)
+    local p, label = M.ReagentPrice(g.id)
     GameTooltip:AddDoubleLine(g.n .. "x " .. M.Name(g.id), p and (C.Money(p * g.n) .. " (" .. label .. ")") or "no price", 1, 1, 1, 0.9, 0.9, 0.9)
   end
   local pp, pl = M.Price(e.r.product)
