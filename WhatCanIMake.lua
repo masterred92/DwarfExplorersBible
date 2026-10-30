@@ -1,10 +1,10 @@
--- Recipe Master: pick a material, see everything it crafts into, what it's worth and where it goes next.
+-- What Can I Make?: pick a material, see everything it crafts into, what it's worth and where it goes next.
 -- Inspired by the Guide in Terraria. Written from scratch (MIT). Reads data, never automates anything.
 local ADDON, ns = ...
 local C, Core, P, D = ns.Compat, ns.Core, ns.Prices, ns.Data
 local M = {}
 ns.RM = M
-KennyRecipeMaster = M
+KennyWhatCanIMake = M
 
 local SCHEMA = 1
 local DEFAULTS = { sources = table.concat(P.DEFAULT_ORDER, ","), tooltip = true, altClick = true, ahCut = 0.05, chainDepth = 3 }
@@ -161,7 +161,7 @@ local function addLines(tooltip, itemID)
   local uses = M.byReagent[itemID]
   local made = M.byProduct[itemID]
   if not uses and not made then return end
-  if uses then tooltip:AddLine(("Recipe Master: used in %d recipe%s"):format(#uses, #uses == 1 and "" or "s"), 0.4, 0.8, 1) end
+  if uses then tooltip:AddLine(("Used in %d recipe%s (What Can I Make?)"):format(#uses, #uses == 1 and "" or "s"), 0.4, 0.8, 1) end
   local p, label = M.Price(itemID)
   if p then tooltip:AddDoubleLine("  Auction (" .. label .. ")", C.Money(p), 0.7, 0.7, 0.7, 1, 1, 1) end
   if uses and settings.altClick then tooltip:AddLine("  Alt-click: what can I make?", 0.5, 0.5, 0.5) end
@@ -179,9 +179,9 @@ end
 local migrations = { [1] = function(d) d.chars = d.chars or {}; d.extra = d.extra or {}; d.names = d.names or {}; d.cache = d.cache or {} end }
 
 function M.Init()
-  db = Core.Migrate(KennyRecipeMasterDB, migrations, SCHEMA)
+  db = Core.Migrate(KennyWhatCanIMakeDB, migrations, SCHEMA)
   db.chars, db.extra, db.names, db.cache = db.chars or {}, db.extra or {}, db.names or {}, db.cache or {}
-  KennyRecipeMasterDB = db
+  KennyWhatCanIMakeDB = db
   settings = Core.Settings(db.settings, DEFAULTS)
   local key = C.RealmFaction() .. "-" .. tostring(UnitName and C.Safe(UnitName("player")) or "?")
   db.chars[key] = db.chars[key] or { learned = {}, skills = {} }
@@ -228,9 +228,9 @@ f:SetScript("OnEvent", function(_, event, arg1)
 end)
 
 -- Slash ---------------------------------------------------------------------------------
-SLASH_KENNYRECIPEMASTER1 = "/rmaster"
-SLASH_KENNYRECIPEMASTER2 = "/craftguide"
-SlashCmdList.KENNYRECIPEMASTER = function(msg)
+SLASH_KENNYWHATCANIMAKE1 = "/wcim"
+SLASH_KENNYWHATCANIMAKE2 = "/craftguide"
+SlashCmdList.KENNYWHATCANIMAKE = function(msg)
   local cmd, arg = (msg or ""):match("^(%S*)%s*(.-)$")
   local lc = cmd:lower()
   if lc == "" then if M.Toggle then M.Toggle() end
@@ -249,10 +249,10 @@ SlashCmdList.KENNYRECIPEMASTER = function(msg)
     Core.ShowReport({ "schema " .. tostring(db.schema), "recipes " .. #M.recipes, "price sources: " .. table.concat(P.Installed(), ", "),
       "order " .. settings.sources })
   elseif lc == "help" then
-    Core.Print("/rmaster [item, link or name] | sources | prefer <id> | order a,b,c | tooltip | altclick | report")
+    Core.Print("/wcim [item, link or name] | sources | prefer <id> | order a,b,c | tooltip | altclick | report")
     Core.Print("source ids: pricelog, auctionator, tsm, auctioneer, scan")
   else
     local id = M.ParseItem(msg)
-    if id and M.Open then M.Open(id) else Core.Print("no recipe uses '" .. msg .. "'. /rmaster help") end
+    if id and M.Open then M.Open(id) else Core.Print("no recipe uses '" .. msg .. "'. /wcim help") end
   end
 end

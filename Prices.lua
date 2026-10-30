@@ -26,7 +26,7 @@ P.Register({ id = "pricelog", label = "PriceLog",
 P.Register({ id = "auctionator", label = "Auctionator",
   available = function() return type(Auctionator) == "table" and type(Auctionator.API) == "table"
     and type(Auctionator.API.v1) == "table" and type(Auctionator.API.v1.GetAuctionPriceByItemID) == "function" end,
-  get = function(id) return pos(Auctionator.API.v1.GetAuctionPriceByItemID("Recipe Master", id)) end })
+  get = function(id) return pos(Auctionator.API.v1.GetAuctionPriceByItemID("What Can I Make?", id)) end })
 
 -- TradeSkillMaster: TSM_API.GetCustomPriceValue(customPriceStr, itemString) (Core/API.lua). No Forever build yet.
 P.Register({ id = "tsm", label = "TSM",
@@ -43,7 +43,7 @@ P.Register({ id = "auctioneer", label = "Auctioneer",
   get = function(id) return pos(AucAdvanced.API.GetMarketValue("item:" .. id)) end })
 
 -- Our own cache, filled from AH searches you do yourself (always available).
-P.Register({ id = "scan", label = "Recipe Master scan",
+P.Register({ id = "scan", label = "What Can I Make? scan",
   available = function() return true end,
   get = function(id) local r = P.cache and P.cache[id]; return r and pos(r.p), r and r.t end })
 

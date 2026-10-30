@@ -8,7 +8,7 @@ local C = ns.Compat
 
 Core.MAX_ERRORS = 5
 Core.REPORT_LIMIT = 2000
-Core.ISSUES_URL = "https://github.com/masterred92/RecipeMaster/issues"
+Core.ISSUES_URL = "https://github.com/masterred92/WhatCanIMake/issues"
 
 function Core.Version()
   return C.AddOnMeta(ADDON, "Version") or "dev"

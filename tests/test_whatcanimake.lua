@@ -31,12 +31,12 @@ C_TradeSkillUI = {
   GetProfessionInfoByRecipeID = function() return { professionName = "First Aid", skillLevel = 40 } end,
 }
 
-local ns = M.loadAddon(".", "RecipeMaster")
+local ns = M.loadAddon(".", "WhatCanIMake")
 M.fire("PLAYER_LOGIN")
 local RM, P = ns.RM, ns.Prices
 M.check(#RM.recipes > 1000, "bundled recipes loaded: " .. #RM.recipes)
 M.check(#postCalls == 1 and hooks.HandleModifiedItemClick, "tooltip and alt-click hooked")
-M.check(M.ldbObjects.RecipeMaster and M.ldbObjects.RecipeMaster.type == "launcher", "LDB launcher")
+M.check(M.ldbObjects.WhatCanIMake and M.ldbObjects.WhatCanIMake.type == "launcher", "LDB launcher")
 
 -- Linen Cloth (2589) is used in Linen Bandage (1251) and Bolt of Linen Cloth (2996).
 local uses = RM.UsesOf(2589)
@@ -52,7 +52,7 @@ M.check(not RM.Knows(found[2996].r), "bolt not known")
 M.check(RM.Skill("First Aid") == 40, "skill level stored")
 M.check(RM.byProduct[990001] and RM.byProduct[990001][1].origin == "scan", "recipe missing from data added from your own window")
 linked = true
-KennyRecipeMasterDB.chars["TestRealm-Horde-Kenny"].learned[2996] = nil
+KennyWhatCanIMakeDB.chars["TestRealm-Horde-Kenny"].learned[2996] = nil
 C_TradeSkillUI.GetFilteredRecipeIDs = function() return { 1 } end
 C_TradeSkillUI.GetRecipeSchematic = function() return { outputItemID = 2996, reagentSlotSchematics = {} } end
 M.fire("TRADE_SKILL_SHOW")
@@ -64,7 +64,7 @@ M.check(RM.Price(2589) == nil, "no price yet")
 C_AuctionHouse = { GetBrowseResults = function() return { { itemKey = { itemID = 2589 }, minPrice = 25, totalQuantity = 40 } } end }
 M.fire("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
 local p, label, id = RM.Price(2589)
-M.check(p == 25 and id == "scan" and label == "Recipe Master scan", "scan cache from your own AH browse")
+M.check(p == 25 and id == "scan" and label == "What Can I Make? scan", "scan cache from your own AH browse")
 C_AuctionHouse.GetNumCommoditySearchResults = function() return 1 end
 C_AuctionHouse.GetCommoditySearchResultInfo = function() return { unitPrice = 900, quantity = 3 } end
 M.fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2996)
@@ -75,23 +75,23 @@ local callers = {}
 Auctionator = { API = { v1 = { GetAuctionPriceByItemID = function(caller, item) callers[#callers + 1] = caller
   if item == 2589 then return 30 end end } } }
 p, label = RM.Price(2589)
-M.check(p == 30 and label == "Auctionator" and callers[1] == "Recipe Master", "Auctionator source")
+M.check(p == 30 and label == "Auctionator" and callers[1] == "What Can I Make?", "Auctionator source")
 -- TSM
 TSM_API = { GetCustomPriceValue = function(str, item) if item == "i:2589" and str == "DBMarket" then return 31 end
   if item == "i:2996" and str == "DBMinBuyout" then return 950 end end }
-SlashCmdList.KENNYRECIPEMASTER("prefer tsm")
+SlashCmdList.KENNYWHATCANIMAKE("prefer tsm")
 p, label = RM.Price(2589)
 M.check(p == 31 and label == "TSM", "TSM DBMarket preferred")
 M.check(RM.Price(2996) == 950, "TSM falls back to DBMinBuyout")
 -- Auctioneer
 AucAdvanced = { API = { GetMarketValue = function(link) if link == "item:2589" then return 32, 10 end end } }
-SlashCmdList.KENNYRECIPEMASTER("order auctioneer,scan")
+SlashCmdList.KENNYWHATCANIMAKE("order auctioneer,scan")
 p, label = RM.Price(2589)
 M.check(p == 32 and label == "Auctioneer", "Auctioneer source")
 M.check(P.Order(RM.Settings().sources)[2] == "scan" and #P.Order(RM.Settings().sources) == 5, "order keeps all sources")
 -- PriceLog
 KennyPriceLog = { GetLatest = function(item) if item == 2589 then return { p = 33, t = 1 } end end }
-SlashCmdList.KENNYRECIPEMASTER("prefer pricelog")
+SlashCmdList.KENNYWHATCANIMAKE("prefer pricelog")
 p, label = RM.Price(2589)
 M.check(p == 33 and label == "PriceLog", "PriceLog source")
 -- A source that errors is skipped.
@@ -120,9 +120,9 @@ local has = {}
 for _, h in ipairs(hits) do has[h] = true end
 M.check(has[2589] and has[2996], "search by name")
 M.check(RM.ParseItem("|cffffffff|Hitem:2589::::::::|h[Linen Cloth]|h|r") == 2589, "parse link")
-SlashCmdList.KENNYRECIPEMASTER("linen cloth")
+SlashCmdList.KENNYWHATCANIMAKE("linen cloth")
 M.check(RM.State().id ~= nil and RM.Frame():IsShown(), "slash opens the guide")
-SlashCmdList.KENNYRECIPEMASTER("2589")
+SlashCmdList.KENNYWHATCANIMAKE("2589")
 M.check(RM.State().id == 2589, "slash by id")
 local a = RM.RowText(RM.UsesOf(2589)[1])
 M.check(a:find("Bolt of Linen Cloth", 1, true) and a:find("Tailoring", 1, true), "row text")
@@ -138,6 +138,6 @@ alt = false
 -- Tooltip
 postCalls[1](GameTooltip, { id = 2589 })
 local joined = table.concat(tipLines, "\n")
-M.check(joined:find("used in %d+ recipes"), "tooltip 'used in N recipes'")
-M.check(joined:find("Recipe Master scan", 1, true), "tooltip shows the price source")
-M.done("RecipeMaster")
+M.check(joined:find("Used in %d+ recipes"), "tooltip 'used in N recipes'")
+M.check(joined:find("What Can I Make? scan", 1, true), "tooltip shows the price source")
+M.done("WhatCanIMake")

@@ -1,5 +1,5 @@
 # BigWigsMods/packager config. Publishing is off until the Wago / CurseForge projects exist (see release.yml).
-package-as: RecipeMaster
+package-as: WhatCanIMake
 
 ignore:
   - tests
