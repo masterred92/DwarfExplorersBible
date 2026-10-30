@@ -1,12 +1,12 @@
 ## Interface: 16001
-## Title: What Can I Make?
+## Title: Dwarf Explorer's Bible
 ## Notes: Pick a material and see everything it crafts into, with auction prices, profit and crafting chains.
 ## Author: Kenny
 ## Version: 1.0.1
-## SavedVariables: KennyWhatCanIMakeDB
+## SavedVariables: KennyDwarfExplorersBibleDB
 ## OptionalDeps: PriceLog, Auctionator, TradeSkillMaster, Auc-Advanced, LibDataBroker-1.1
 ## X-License: MIT
-## IconTexture: Interface\AddOns\WhatCanIMake\media\icon
+## IconTexture: Interface\AddOns\DwarfExplorersBible\media\icon
 # ## X-Curse-Project-ID: (add when the CurseForge project exists)
 # ## X-Wago-ID: (add when the Wago project exists)
 
@@ -14,6 +14,6 @@ Compat.lua
 Core.lua
 Data.lua
 Prices.lua
-WhatCanIMake.lua
+DwarfExplorersBible.lua
 UI.lua
 Broker.lua
