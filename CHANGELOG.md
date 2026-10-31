@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+- Now published on CurseForge and Wago Addons; download links added to the README.
+- Releases are published automatically from tagged versions.
+
 ## 1.0.1
 - Recipes now come from WoW: Forever's own client data (1,971 recipes) instead of vanilla data; many Forever recipes use different reagents.
 - Skill shown as where the recipe turns yellow/grey, coloured for your skill like the profession window.

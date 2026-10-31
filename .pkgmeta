@@ -1,4 +1,4 @@
-# BigWigsMods/packager config. Publishing is off until the Wago / CurseForge projects exist (see release.yml).
+# BigWigsMods/packager config. Project IDs are in DwarfExplorersBible.toc (## X-Curse-Project-ID / ## X-Wago-ID).
 package-as: DwarfExplorersBible
 
 ignore:

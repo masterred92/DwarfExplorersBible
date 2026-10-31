@@ -1,18 +1,16 @@
-# Packaging workflow. PUBLISHING IS OFF: this only runs when started by hand (Actions > Package > Run workflow),
-# runs the tests, builds the zip with BigWigsMods/packager in dry-run mode (-d, no uploads) and keeps it as a
-# workflow artifact. Nothing goes to CurseForge, Wago or GitHub Releases.
-#
-# To turn publishing on later (after Kenny creates the Wago / CurseForge projects):
-#   1. put the IDs in the TOC (## X-Wago-ID / ## X-Curse-Project-ID, remove the leading "# ")
-#   2. add the repo secrets WAGO_API_TOKEN (and CF_API_TOKEN for CurseForge)
-#   3. add the tag trigger below (push: tags: ['v*']), delete the "-d" argument and the artifact step.
-name: Package
+# Packages and publishes to CurseForge, Wago and GitHub Releases. Runs ONLY when a v* tag is pushed.
+# A plain tag (v0.1.0, v0.1.1) publishes as a full Release; a tag containing "beta" or "alpha" would publish as beta/alpha.
+# Use annotated tags. Project IDs are already in DwarfExplorersBible.toc. Before the first tag, Kenny must add the repo secrets
+# CF_API_TOKEN and WAGO_API_TOKEN (GITHUB_TOKEN is automatic) and set workflow permissions to read/write.
+name: Package and release
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
-  contents: read
+  contents: write   # lets the packager create the GitHub release
 
 jobs:
   test:
@@ -28,18 +26,16 @@ jobs:
       - name: Syntax, lint, mock-client tests
         run: sh tests/run.sh
 
-  package:
+  release:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # full history for the changelog
-      - name: Build the zip (dry run, no uploads)
+      - name: Package and upload
         uses: BigWigsMods/packager@v2
-        with:
-          args: -d
-      - uses: actions/upload-artifact@v4
-        with:
-          name: package
-          path: .release/*.zip

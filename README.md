@@ -1,6 +1,6 @@
 <p align="center"><img src="media/logo.png" alt="Dwarf Explorer's Bible logo" width="200"></p>
 
-# Dwarf Explorer's Bible (WoW: Forever) v1.0.1
+# Dwarf Explorer's Bible (WoW: Forever) v1.0.2
 
 [![Tests](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml/badge.svg)](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml) [![WoW: Forever](https://img.shields.io/badge/WoW%3A%20Forever-Interface%2016001-c8a165)](https://github.com/masterred92/DwarfExplorersBible/blob/main/DwarfExplorersBible.toc) [![Release](https://img.shields.io/github/v/release/masterred92/DwarfExplorersBible?label=release)](https://github.com/masterred92/DwarfExplorersBible/releases) [![License: MIT](https://img.shields.io/github/license/masterred92/DwarfExplorersBible)](https://github.com/masterred92/DwarfExplorersBible/blob/main/LICENSE)
 
@@ -42,9 +42,9 @@ Reverse lookups exist ([Recipe Master by BrenoLudgero](https://www.curseforge.co
 `/deb` (or `/craftguide`) open · `/deb <name, link or itemID>` · `sources` · `prefer <id>` · `order a,b,c` · `tooltip` · `altclick` · `report` · `help`. Source ids: `pricelog`, `auctionator`, `tsm`, `auctioneer`, `scan`.
 
 ## Download
-- **Wago Addons:** coming at launch (Nov 4). The link goes here when the project is live.
-- **CurseForge:** maybe later.
-- **GitHub:** [Releases](https://github.com/masterred92/DwarfExplorersBible/releases) (from the first tagged release) · [Issues](https://github.com/masterred92/DwarfExplorersBible/issues)
+- **Wago Addons:** [Dwarf Explorer's Bible on Wago](https://addons.wago.io/addons/dwarfexplorersbible)
+- **CurseForge:** [Dwarf Explorer's Bible on CurseForge](https://www.curseforge.com/wow/addons/dwarf-explorers-bible)
+- **GitHub:** [Releases](https://github.com/masterred92/DwarfExplorersBible/releases) · [Issues](https://github.com/masterred92/DwarfExplorersBible/issues)
 - **More by Kenny:** [PriceLog](https://github.com/masterred92/PriceLog) · [MatTooltip](https://github.com/masterred92/MatTooltip) · [NeutralFlip](https://github.com/masterred92/NeutralFlip) · [all WoW: Forever addons](https://github.com/masterred92/wow-forever-addons)
 
 ## Install
