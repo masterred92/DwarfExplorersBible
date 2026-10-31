@@ -7,8 +7,8 @@
 ## OptionalDeps: PriceLog, Auctionator, TradeSkillMaster, Auc-Advanced, LibDataBroker-1.1
 ## X-License: MIT
 ## IconTexture: Interface\AddOns\DwarfExplorersBible\media\icon
-# ## X-Curse-Project-ID: (add when the CurseForge project exists)
-# ## X-Wago-ID: (add when the Wago project exists)
+## X-Curse-Project-ID: 1775004
+## X-Wago-ID: O67beoN3
 
 Compat.lua
 Core.lua
