@@ -26,7 +26,7 @@ jobs:
         with:
           luaVersion: "5.1.5"
       - uses: leafo/gh-actions-luarocks@v6.1.1
-      - name: Install luacheck
-        run: luarocks install luacheck
+      - name: Install luacheck and ripgrep
+        run: luarocks install luacheck && sudo apt-get install -y ripgrep
       - name: Syntax, lint, mock-client tests, API check against the Forever UI source
         run: sh tests/run.sh wow-ui
