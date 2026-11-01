@@ -1,6 +1,6 @@
 <p align="center"><img src="media/logo.png" alt="Dwarf Explorer's Bible logo" width="200"></p>
 
-# Dwarf Explorer's Bible (WoW: Forever) v1.0.3
+# Dwarf Explorer's Bible (WoW: Forever) v1.0.4
 
 [![Tests](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml/badge.svg)](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml) [![WoW: Forever](https://img.shields.io/badge/WoW%3A%20Forever-Interface%2016001-c8a165)](https://github.com/masterred92/DwarfExplorersBible/blob/main/DwarfExplorersBible.toc) [![Release](https://img.shields.io/github/v/release/masterred92/DwarfExplorersBible?label=release)](https://github.com/masterred92/DwarfExplorersBible/releases) [![License: MIT](https://img.shields.io/github/license/masterred92/DwarfExplorersBible)](https://github.com/masterred92/DwarfExplorersBible/blob/main/LICENSE)
 

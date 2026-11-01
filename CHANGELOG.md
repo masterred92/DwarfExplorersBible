@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.4
+- No duplicate AH price in tooltips: when MatTooltip is installed, its price line is the only one on trade goods.
+
 ## 1.0.3
 - `/deb prefer <unknown id>` now lists the valid source ids instead of searching for an item called 'prefer ...'.
 - Slash commands typed before the addon finished loading are ignored instead of erroring.

@@ -186,7 +186,10 @@ local function addLines(tooltip, itemID)
   if not uses and not made then return end
   if uses then tooltip:AddLine(("Used in %d recipe%s (Dwarf Explorer's Bible)"):format(#uses, #uses == 1 and "" or "s"), 0.4, 0.8, 1) end
   local p, label = M.Price(itemID)
-  if p then tooltip:AddDoubleLine("  Auction (" .. label .. ")", C.Money(p), 0.7, 0.7, 0.7, 1, 1, 1) end
+  -- MatTooltip already shows an AH price on every trade good: don't show a second one.
+  local mt = type(_G["KennyMatTooltip"]) == "table" and _G["KennyMatTooltip"]
+  local mtShows = mt and mt.IsMat and mt.Settings and (mt.Settings() or {}).enabled and mt.IsMat(itemID)
+  if p and not mtShows then tooltip:AddDoubleLine("  Auction (" .. label .. ")", C.Money(p), 0.7, 0.7, 0.7, 1, 1, 1) end
   if uses and settings.altClick then tooltip:AddLine("  Alt-click: what can I make?", 0.5, 0.5, 0.5) end
 end
 M.AddTooltipLines = addLines
