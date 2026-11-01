@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+- `/deb prefer <unknown id>` now lists the valid source ids instead of searching for an item called 'prefer ...'.
+- Slash commands typed before the addon finished loading are ignored instead of erroring.
+
 ## 1.0.2
 - Now published on CurseForge and Wago Addons; download links added to the README.
 - Releases are published automatically from tagged versions.

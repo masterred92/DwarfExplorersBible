@@ -284,6 +284,7 @@ SLASH_KENNYDWARFEXPLORERSBIBLE2 = "/craftguide"
 SlashCmdList.KENNYDWARFEXPLORERSBIBLE = function(msg)
   local cmd, arg = (msg or ""):match("^(%S*)%s*(.-)$")
   local lc = cmd:lower()
+  if not settings then return end
   if lc == "" then if M.Toggle then M.Toggle() end
   elseif lc == "sources" then
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > ") .. ". Installed: " .. table.concat(P.Installed(), ", "))
@@ -292,6 +293,8 @@ SlashCmdList.KENNYDWARFEXPLORERSBIBLE = function(msg)
     settings.sources = arg .. "," .. settings.sources
     settings.sources = table.concat(P.Order(settings.sources), ",")
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > "))
+  elseif lc == "prefer" then
+    Core.Print("unknown source '" .. arg .. "'. Source ids: pricelog, auctionator, tsm, auctioneer, scan")
   elseif lc == "order" and arg ~= "" then
     settings.sources = table.concat(P.Order(arg), ",")
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > "))
