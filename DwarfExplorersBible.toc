@@ -6,6 +6,7 @@
 ## SavedVariables: KennyDwarfExplorersBibleDB
 ## OptionalDeps: PriceLog, Auctionator, TradeSkillMaster, Auc-Advanced, LibDataBroker-1.1
 ## X-License: MIT
+## X-Website: https://github.com/masterred92/DwarfExplorersBible
 ## IconTexture: Interface\AddOns\DwarfExplorersBible\media\icon
 ## X-Curse-Project-ID: 1775004
 ## X-Wago-ID: O67beoN3

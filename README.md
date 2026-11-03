@@ -4,7 +4,7 @@
 
 [![Tests](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml/badge.svg)](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml) [![WoW: Forever](https://img.shields.io/badge/WoW%3A%20Forever-Interface%2016001-c8a165)](https://github.com/masterred92/DwarfExplorersBible/blob/main/DwarfExplorersBible.toc) [![Release](https://img.shields.io/github/v/release/masterred92/DwarfExplorersBible?label=release)](https://github.com/masterred92/DwarfExplorersBible/releases) [![License: MIT](https://img.shields.io/github/license/masterred92/DwarfExplorersBible)](https://github.com/masterred92/DwarfExplorersBible/blob/main/LICENSE)
 
-**What can I make?** — "What can I make with this?" Pick any material and Dwarf Explorer's Bible shows every recipe that uses it, what each one is worth at the auction house right now, and where the result goes next.
+**What can I make with this?** Pick any material and Dwarf Explorer's Bible shows every recipe that uses it, what each one is worth at the auction house right now, and where the result goes next.
 
 - **Pick a material:** Alt-click any item (bags, chat links, loot, the AH), type `/deb linen cloth`, paste a link, or use the search box.
 - **Every recipe that uses it:** profession, skill level (orange when it's above yours), the other reagents, and whether you know the recipe.
@@ -45,7 +45,7 @@ Reverse lookups exist ([Recipe Master by BrenoLudgero](https://www.curseforge.co
 - **Wago Addons:** [Dwarf Explorer's Bible on Wago](https://addons.wago.io/addons/dwarfexplorersbible)
 - **CurseForge:** [Dwarf Explorer's Bible on CurseForge](https://www.curseforge.com/wow/addons/dwarf-explorers-bible)
 - **GitHub:** [Releases](https://github.com/masterred92/DwarfExplorersBible/releases) · [Issues](https://github.com/masterred92/DwarfExplorersBible/issues)
-- **More by Kenny:** [PriceLog](https://github.com/masterred92/PriceLog) · [MatTooltip](https://github.com/masterred92/MatTooltip) · [NeutralFlip](https://github.com/masterred92/NeutralFlip) · [all WoW: Forever addons](https://github.com/masterred92/wow-forever-addons)
+- **More by Kenny:** [PriceLog](https://github.com/masterred92/PriceLog) · [MatTooltip](https://github.com/masterred92/MatTooltip) · [NeutralFlip](https://github.com/masterred92/NeutralFlip) · [GoldPerSpot](https://github.com/masterred92/GoldPerSpot) · [all WoW: Forever addons](https://github.com/masterred92/wow-forever-addons)
 
 ## Install
 Put the `DwarfExplorersBible` folder in `World of Warcraft\_forever_\Interface\AddOns\` and restart the game or `/reload`.
