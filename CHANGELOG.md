@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+- Rebuilt the recipe list from the current WoW: Forever client tables (build 1.60.1.70862, via wago.tools). The 1,971 recipes, reagents, skill levels and vendor prices are unchanged from 1.0.4.
+- README: the release workflow already publishes tagged versions to CurseForge, Wago Addons and GitHub Releases.
+
 ## 1.0.4
 - No duplicate AH price in tooltips: when MatTooltip is installed, its price line is the only one on trade goods.
 

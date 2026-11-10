@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: Gethe/wow-ui-source
-          ref: ca8368f2f2380cbe696854f7f2646387c278a61b
+          ref: 9dc84f0d3bbae1768ac3405b3716000bd93eda06
           path: wow-ui
           sparse-checkout: Interface
           persist-credentials: false

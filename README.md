@@ -1,6 +1,6 @@
 <p align="center"><img src="media/logo.png" alt="Dwarf Explorer's Bible logo" width="200"></p>
 
-# Dwarf Explorer's Bible (WoW: Forever) v1.0.4
+# Dwarf Explorer's Bible (WoW: Forever) v1.0.5
 
 [![Tests](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml/badge.svg)](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml) [![WoW: Forever](https://img.shields.io/badge/WoW%3A%20Forever-Interface%2016001-c8a165)](https://github.com/masterred92/DwarfExplorersBible/blob/main/DwarfExplorersBible.toc) [![Release](https://img.shields.io/github/v/release/masterred92/DwarfExplorersBible?label=release)](https://github.com/masterred92/DwarfExplorersBible/releases) [![License: MIT](https://img.shields.io/github/license/masterred92/DwarfExplorersBible)](https://github.com/masterred92/DwarfExplorersBible/blob/main/LICENSE)
 
@@ -31,7 +31,7 @@ No price addon? It still works: every AH search you make (browse or commodity) i
 Change the order with `/deb prefer auctionator` or `/deb order tsm,auctionator,scan`; `/deb sources` shows the order and what's installed.
 
 ## Where the recipes come from
-The recipe list (1,971 recipes across Alchemy, Blacksmithing, Cooking, Enchanting items, Engineering, First Aid, Leatherworking, Mining and Tailoring) comes from **WoW: Forever's own client tables** (build 1.60.1, via [wago.tools](https://wago.tools)), so it has Forever's reagents, not vanilla's: for example Minor Healing Potion in Forever uses an Empty Vial, Mild Spices and Peaceblooms. `tools/gen_data.py` regenerates it after a patch. Skill levels are where a recipe turns yellow and grey, coloured against your own skill. Each time you open a profession window the addon also records what you know and adds any recipe the bundled list doesn't have.
+The recipe list (1,971 recipes across Alchemy, Blacksmithing, Cooking, Enchanting items, Engineering, First Aid, Leatherworking, Mining and Tailoring) comes from **WoW: Forever's own client tables** (build 1.60.1.70862, via [wago.tools](https://wago.tools)), so it has Forever's reagents, not vanilla's: for example Minor Healing Potion in Forever uses an Empty Vial, Mild Spices and Peaceblooms. `tools/gen_data.py` regenerates it after a patch. Skill levels are where a recipe turns yellow and grey, coloured against your own skill. Each time you open a profession window the addon also records what you know and adds any recipe the bundled list doesn't have.
 
 **Reagent cost** uses the vendor price for reagents a vendor sells (thread, flux, vials, spices, dyes), as Auctionator's crafting view does: learned from merchant windows you open, else Forever's listed price. Everything else uses the auction price. Profit is shown only when every reagent and the result have a price, so a missing price can't make a recipe look better than it is.
 
@@ -62,10 +62,10 @@ Put the `DwarfExplorersBible` folder in `World of Warcraft\_forever_\Interface\A
 ## Credits
 - Idea from Kenny's mate, who asked for "the Guide from Terraria, but for WoW, with auction prices".
 - Inspired by the Guide NPC in Terraria (Re-Logic) and the tModLoader Recipe Browser mod's way of showing "what can I make from this". No code from either.
-- Recipe data: WoW: Forever 1.60.1 client tables via [wago.tools](https://wago.tools); vendor-sold flags from [nexus-devs/wow-classic-items](https://github.com/nexus-devs/wow-classic-items) (MIT).
+- Recipe data: WoW: Forever 1.60.1.70862 client tables via [wago.tools](https://wago.tools); vendor-sold flags from [nexus-devs/wow-classic-items](https://github.com/nexus-devs/wow-classic-items) (MIT).
 
 ## Licence
 MIT. Written from scratch; no code copied from other addons. Free, no paid features. It doesn't automate anything: it only shows information, and only caches AH prices from searches you make yourself.
 
 ## Development
-`tests/run.sh [path-to-wow-ui-source-forever]` runs `luac -p`, luacheck, the mock-client tests (every price source is mocked) and (with a path) an API check against Blizzard's Forever UI source. GitHub Actions runs the tests on every push. `tools/gen_data.py data.json` regenerates `Data.lua`. The release workflow is a manual dry run that builds the zip with [BigWigsMods/packager](https://github.com/BigWigsMods/packager); publishing is switched off until the Wago project ID is added (see `.github/workflows/release.yml`).
+`tests/run.sh [path-to-wow-ui-source-forever]` runs `luac -p`, luacheck, the mock-client tests (every price source is mocked) and (with a path) an API check against Blizzard's Forever UI source. GitHub Actions runs the tests on every push. `tools/gen_data.py <csv-dir> [wow-classic-items data.json]` regenerates `Data.lua` from the current Forever client tables. Pushing a `v*` tag packages a full release with [BigWigsMods/packager](https://github.com/BigWigsMods/packager) and publishes it to CurseForge, Wago Addons and GitHub Releases (project IDs are in the TOC).
