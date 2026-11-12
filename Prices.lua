@@ -99,6 +99,12 @@ function P.Vendor(itemID)
   return D and D.buy and D.buy[itemID] or nil
 end
 
+-- Vendor price you have seen for a reagent Blizzard says a vendor sells (Data.vendorCap), even when the vendor
+-- has limited stock. Used only as a ceiling on that reagent's cost, never as a price for anything else.
+function P.Cap(itemID)
+  return P.capCache and P.capCache[itemID] or nil
+end
+
 -- Reads the open merchant window. Called on MERCHANT_SHOW; reads only, buys nothing.
 function P.ReadMerchant()
   if not (P.vendorCache and GetMerchantNumItems and GetMerchantItemID) then return 0 end
@@ -114,8 +120,10 @@ function P.ReadMerchant()
       if not ext then price, stack, avail = p, s, a end
     end
     price, stack, avail = C.SafeNumber(price), C.SafeNumber(stack), C.SafeNumber(avail)
-    if id and price and price > 0 and stack and stack > 0 and avail == -1 then
-      P.vendorCache[id] = math.max(1, math.floor(price / stack + 0.5)); n = n + 1
+    if id and price and price > 0 and stack and stack > 0 then
+      local unit = math.max(1, math.floor(price / stack + 0.5))
+      if avail == -1 then P.vendorCache[id] = unit; n = n + 1
+      elseif P.capCache and ns.Data and ns.Data.vendorCap and ns.Data.vendorCap[id] then P.capCache[id] = unit; n = n + 1 end
     end
   end
   return n

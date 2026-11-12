@@ -42,7 +42,10 @@ local function refresh()
   else
     local p, label = M.Price(id)
     local uses, made = #(M.byReagent[id] or {}), #(M.byProduct[id] or {})
-    win.head:SetText(("%s  %s\nUsed in %d  ·  Made by %d"):format(M.Name(id), priceText(p, label), uses, made))
+    local camp = {}
+    for _, c in ipairs(M.CampUses(id) or {}) do camp[#camp + 1] = M.CampText(c) end
+    win.head:SetText(("%s  %s\nUsed in %d  ·  Made by %d%s"):format(M.Name(id), priceText(p, label), uses, made,
+      #camp > 0 and ("  ·  Camp: " .. table.concat(camp, ", ")) or ""))
     if state.mode == "uses" then state.list = M.UsesOf(id)
     else
       state.list = {}
@@ -66,6 +69,9 @@ local function rowTooltip(row)
   GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
   GameTooltip:AddLine(M.Name(e.r.product))
   GameTooltip:AddLine(e.r.prof .. ((e.r.skill or 0) > 0 and (" (yellow " .. e.r.skill .. ", grey " .. (e.r.grey or "?") .. ")") or "") .. (e.r.origin == "scan" and "  (from your profession window)" or ""), 0.7, 0.7, 0.7)
+  if M.IsHidden(e.r.product) then GameTooltip:AddLine("Not released yet: Blizzard keeps this item out of the game files until then.", 1, 0.6, 0.2, true) end
+  local tools = M.Tools(e.r)
+  if tools then GameTooltip:AddLine("Needs: " .. table.concat(tools, ", "), 0.7, 0.7, 0.7, true) end
   for _, g in ipairs(e.r.reagents) do
     local p, label = M.ReagentPrice(g.id)
     GameTooltip:AddDoubleLine(g.n .. "x " .. M.Name(g.id), p and (C.Money(p * g.n) .. " (" .. label .. ")") or "no price", 1, 1, 1, 0.9, 0.9, 0.9)

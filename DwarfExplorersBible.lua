@@ -9,7 +9,7 @@ KennyDwarfExplorersBible = M
 local SCHEMA = 1
 local DEFAULTS = { sources = table.concat(P.DEFAULT_ORDER, ","), tooltip = true, altClick = true, ahCut = 0.05, chainDepth = 3 }
 local db, settings, char
-M.byReagent, M.byProduct, M.recipes = {}, {}, {}
+M.byReagent, M.byProduct, M.recipes, M.byCamp = {}, {}, {}, {}
 
 -- Recipe index ---------------------------------------------------------------------------
 local function addRecipe(r)
@@ -32,9 +32,21 @@ function M.ParseRow(row, profs)
   return r
 end
 
+-- Camp action row: spellID;reagent:count;action;place (e.g. Plant Seeds at a Greenhouse). These use an item up
+-- without crafting one, so they are listed apart from recipes.
+function M.ParseCamp(row)
+  local spell, id, n, action, place = row:match("^(%d+);(%d+):(%d+);([^;]*);(.*)$")
+  if not spell then return nil end
+  return { spell = tonumber(spell), id = tonumber(id), n = tonumber(n), action = action, place = place }
+end
+
 function M.BuildIndex()
-  M.byReagent, M.byProduct, M.recipes = {}, {}, {}
+  M.byReagent, M.byProduct, M.recipes, M.byCamp = {}, {}, {}, {}
   for _, row in ipairs(D.recipes) do local r = M.ParseRow(row, D.professions); if r then addRecipe(r) end end
+  for _, row in ipairs(D.camp or {}) do
+    local c = M.ParseCamp(row)
+    if c then M.byCamp[c.id] = M.byCamp[c.id] or {}; table.insert(M.byCamp[c.id], c) end
+  end
   -- Recipes you've learned that the bundled data doesn't have (new in Forever, or enchants).
   for _, r in pairs(db and db.extra or {}) do
     if type(r) == "table" and r.product and not M.byProduct[r.product] then r.origin = "scan"; addRecipe(r) end
@@ -43,6 +55,20 @@ end
 
 function M.Name(id)
   return C.GetItemName(id) or (D.names[id]) or (db and db.names[id]) or ("item " .. tostring(id))
+end
+
+-- Recipe products Blizzard keeps out of the client until release (shown under the recipe's name).
+function M.IsHidden(id) return D.hidden ~= nil and D.hidden[id] == true end
+-- Items or tool types a recipe needs in your bags (Blacksmith Hammer, Runed Golden Rod...).
+function M.Tools(r) return r and r.spell and D.tools and D.tools[r.spell] or nil end
+-- Copies of a potion that the client says can't be used in profession recipes.
+function M.NoRecipe(id) return D.noRecipe ~= nil and D.noRecipe[id] == true end
+-- Reagents Blizzard says a Forever vendor sells: the AH price should never be above the vendor's.
+function M.VendorCapped(id) return D.vendorCap ~= nil and D.vendorCap[id] ~= nil end
+function M.CampUses(id) return M.byCamp[id] end
+-- One line per camp use: "Plant Seeds (1) at a Greenhouse".
+function M.CampText(c)
+  return ("%s (%d)%s"):format(c.action, c.n, c.place ~= "" and (" at a " .. c.place) or "")
 end
 
 -- Known recipes ---------------------------------------------------------------------------
@@ -88,10 +114,13 @@ function M.Price(id) return P.Get(id, settings and settings.sources) end
 
 -- What a reagent costs you: the vendor price if a vendor sells it (as Auctionator's crafting module does),
 -- otherwise the auction price. Returns price, label.
+-- A vendor-capped reagent never costs more than the vendor price you have seen.
 function M.ReagentPrice(id)
   local v = P.Vendor(id)
   if v then return v, "vendor" end
   local p, label = M.Price(id)
+  local cap = M.VendorCapped(id) and P.Cap(id)
+  if cap and (not p or cap < p) then return cap, "vendor cap" end
   return p, label
 end
 
@@ -155,7 +184,7 @@ function M.Search(text, limit)
   local out = {}
   if text == "" then return out end
   local function try(id, name)
-    if name and name:lower():find(text, 1, true) and (M.byReagent[id] or M.byProduct[id]) then out[#out + 1] = id end
+    if name and name:lower():find(text, 1, true) and (M.byReagent[id] or M.byProduct[id] or M.byCamp[id]) then out[#out + 1] = id end
   end
   for id, name in pairs(D.names) do try(id, name) end
   for id, name in pairs(db and db.names or {}) do if not D.names[id] then try(id, name) end end
@@ -183,14 +212,25 @@ function M.DB() return db end
 local function addLines(tooltip, itemID)
   local uses = M.byReagent[itemID]
   local made = M.byProduct[itemID]
-  if not uses and not made then return end
+  local camp = M.byCamp[itemID]
+  if M.NoRecipe(itemID) then tooltip:AddLine("This copy can't be used in recipes (Dwarf Explorer's Bible)", 1, 0.45, 0.45) end
+  if not uses and not made and not camp then return end
   if uses then tooltip:AddLine(("Used in %d recipe%s (Dwarf Explorer's Bible)"):format(#uses, #uses == 1 and "" or "s"), 0.4, 0.8, 1) end
+  if camp then
+    local parts = {}
+    for _, c in ipairs(camp) do parts[#parts + 1] = M.CampText(c) end
+    tooltip:AddLine("Camp: " .. table.concat(parts, ", "), 0.4, 0.8, 1, true)
+  end
+  if M.VendorCapped(itemID) then
+    local cap = P.Cap(itemID)
+    tooltip:AddLine("Sold by a vendor in Forever: don't pay more at the AH" .. (cap and (" (" .. C.Money(cap) .. ")") or ""), 1, 0.82, 0, true)
+  end
   local p, label = M.Price(itemID)
   -- MatTooltip already shows an AH price on every trade good: don't show a second one.
   local mt = type(_G["KennyMatTooltip"]) == "table" and _G["KennyMatTooltip"]
   local mtShows = mt and mt.IsMat and mt.Settings and (mt.Settings() or {}).enabled and mt.IsMat(itemID)
   if p and not mtShows then tooltip:AddDoubleLine("  Auction (" .. label .. ")", C.Money(p), 0.7, 0.7, 0.7, 1, 1, 1) end
-  if uses and settings.altClick then tooltip:AddLine("  Alt-click: what can I make?", 0.5, 0.5, 0.5) end
+  if (uses or camp) and settings.altClick then tooltip:AddLine("  Alt-click: what can I make?", 0.5, 0.5, 0.5) end
 end
 M.AddTooltipLines = addLines
 
@@ -230,6 +270,8 @@ function M.Init()
   P.cache = db.cache[rk]
   db.vendor = db.vendor or {}
   P.vendorCache = db.vendor
+  db.vendorCap = db.vendorCap or {}
+  P.capCache = db.vendorCap
   M.BuildIndex()
 end
 
@@ -264,7 +306,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
       hooksecurefunc("HandleModifiedItemClick", function(link)
         if settings.altClick and IsAltKeyDown and IsAltKeyDown() and type(link) == "string" then
           local id = tonumber(link:match("item:(%d+)"))
-          if id and (M.byReagent[id] or M.byProduct[id]) and M.Open then M.Open(id) end
+          if id and (M.byReagent[id] or M.byProduct[id] or M.byCamp[id]) and M.Open then M.Open(id) end
         end
       end)
     end
@@ -304,7 +346,7 @@ SlashCmdList.KENNYDWARFEXPLORERSBIBLE = function(msg)
   elseif lc == "tooltip" then settings.tooltip = not settings.tooltip; Core.Print("tooltip line " .. (settings.tooltip and "on" or "off"))
   elseif lc == "altclick" then settings.altClick = not settings.altClick; Core.Print("alt-click " .. (settings.altClick and "on" or "off"))
   elseif lc == "report" then
-    Core.ShowReport({ "schema " .. tostring(db.schema), "recipes " .. #M.recipes, "price sources: " .. table.concat(P.Installed(), ", "),
+    Core.ShowReport({ "schema " .. tostring(db.schema), "recipes " .. #M.recipes .. " (data " .. tostring(D.build) .. ")", "price sources: " .. table.concat(P.Installed(), ", "),
       "order " .. settings.sources })
   elseif lc == "help" then
     Core.Print("/deb [item, link or name] | sources | prefer <id> | order a,b,c | tooltip | altclick | report")

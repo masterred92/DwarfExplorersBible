@@ -2,7 +2,7 @@
 ## Title: Dwarf Explorer's Bible
 ## Notes: Pick a material and see everything it crafts into, with auction prices, profit and crafting chains.
 ## Author: Kenny
-## Version: 1.0.5
+## Version: 1.1.0
 ## SavedVariables: KennyDwarfExplorersBibleDB
 ## OptionalDeps: PriceLog, Auctionator, TradeSkillMaster, Auc-Advanced, LibDataBroker-1.1
 ## X-License: MIT
