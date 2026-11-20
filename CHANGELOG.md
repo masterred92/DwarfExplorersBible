@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+- New window, from UI Bot's approved mockup: 660x632 and opaque, Back with a clickable breadcrumb, a bigger header (icon, name, price and where it's from), recipe icons, profit on the right, and "not learned" or a tick next to each profession.
+- Search shows results as you type (up to 8, with how many recipes use each) and matches the start of words: "copp" finds Copper Bar and Handful of Copper Bolts, "opper" finds nothing. An exact name comes first.
+- "Show only" boxes: Known, My professions and Has a price. They're remembered between sessions; only My professions is ticked at first. Until you've opened a profession window, My professions shows everything.
+- Crafting chain strip: where you came from, this material, the selected recipe and that result's most profitable next step. It starts on the most profitable recipe; click a row to switch it, click it again or a step in the strip to open that item.
+- Drops from your own kills: the addon counts the trade goods in each mob corpse you loot (once per corpse, even after a reopen or `/reload`). After 20 kills of a mob, the mob's tooltip and the material's "Drops from" section show the rate, "from your N kills". Corpses where the game hides the mob or any item are skipped. Loot from items, fishing, chests and skinning is left out. No loot database.
+- Recipe data rebuilt from client build 1.60.1.70959 plus its hotfixes (via wago.tools). The 2,090 recipes are unchanged from 1.1.0.
+- Nov 19 hotfix: Hybridize Seeds now says "(can fail)" (Blizzard hasn't published the chance), and Scarce Herb Seeds only show Plant Seeds, with "Can't be hybridized since the Nov 19 hotfix" in their tooltip.
+
 ## 1.1.0
 - Recipe data now includes the server hotfixes Blizzard has pushed since launch (client build 1.60.1.70888 plus its hotfixes, via wago.tools). 2,090 recipes (was 1,971) using or making 2,461 items (was 2,331).
 - New professions: Herbalism, Skinning and Fishing camp crafts (Incense Candle, Greenhouse, Seed Hybridizer, Camp Chair, Field Guide, Trapper's Workbench, Fish Bowl, Fishing Rack, Fishing Hut), all 26 Poisons, and Comprehension (Study).

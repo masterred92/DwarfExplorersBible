@@ -152,8 +152,10 @@ SlashCmdList.KENNYDWARFEXPLORERSBIBLE("linen cloth")
 M.check(RM.State().id ~= nil and RM.Frame():IsShown(), "slash opens the guide")
 SlashCmdList.KENNYDWARFEXPLORERSBIBLE("2589")
 M.check(RM.State().id == 2589, "slash by id")
-local a = RM.RowText(RM.UsesOf(2589)[1])
-M.check(a:find("Bolt of Linen Cloth", 1, true) and a:find("Tailoring", 1, true), "row text")
+local bolt
+for _, e in ipairs(RM.UsesOf(2589)) do if e.r.product == 2996 then bolt = e end end
+local a, _, reag, right = RM.RowText(bolt)
+M.check(a:find("Bolt of Linen Cloth", 1, true) and right:find("Tailoring", 1, true) and reag:find("Linen Cloth", 1, true), "row text")
 RM.Navigate(2996, true)
 M.check(RM.State().history[#RM.State().history] == 2589, "navigating keeps a back history")
 

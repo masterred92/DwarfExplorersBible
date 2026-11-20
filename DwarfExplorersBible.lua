@@ -6,8 +6,10 @@ local M = {}
 ns.RM = M
 KennyDwarfExplorersBible = M
 
-local SCHEMA = 1
-local DEFAULTS = { sources = table.concat(P.DEFAULT_ORDER, ","), tooltip = true, altClick = true, ahCut = 0.05, chainDepth = 3 }
+local SCHEMA = 2
+-- filter* are the window's "Show only" boxes, remembered between sessions; only "My professions" starts ticked.
+local DEFAULTS = { sources = table.concat(P.DEFAULT_ORDER, ","), tooltip = true, altClick = true, ahCut = 0.05, chainDepth = 3,
+  filterKnown = false, filterMine = true, filterPriced = false }
 local db, settings, char
 M.byReagent, M.byProduct, M.recipes, M.byCamp = {}, {}, {}, {}
 
@@ -32,12 +34,15 @@ function M.ParseRow(row, profs)
   return r
 end
 
--- Camp action row: spellID;reagent:count;action;place (e.g. Plant Seeds at a Greenhouse). These use an item up
--- without crafting one, so they are listed apart from recipes.
+-- Camp action row: spellID;reagent:count;action;place[;can fail] (e.g. Plant Seeds at a Greenhouse). These use an
+-- item up without crafting one, so they are listed apart from recipes. "can fail": Blizzard says the action can fail
+-- (Hybridize Seeds since the Nov 19 hotfix; the chance isn't published).
 function M.ParseCamp(row)
-  local spell, id, n, action, place = row:match("^(%d+);(%d+):(%d+);([^;]*);(.*)$")
+  local spell, id, n, action, rest = row:match("^(%d+);(%d+):(%d+);([^;]*);(.*)$")
   if not spell then return nil end
-  return { spell = tonumber(spell), id = tonumber(id), n = tonumber(n), action = action, place = place }
+  local place, note = rest:match("^([^;]*);(.*)$")
+  place = place or rest
+  return { spell = tonumber(spell), id = tonumber(id), n = tonumber(n), action = action, place = place, canFail = note == "can fail" }
 end
 
 function M.BuildIndex()
@@ -68,8 +73,10 @@ function M.VendorCapped(id) return D.vendorCap ~= nil and D.vendorCap[id] ~= nil
 function M.CampUses(id) return M.byCamp[id] end
 -- One line per camp use: "Plant Seeds (1) at a Greenhouse".
 function M.CampText(c)
-  return ("%s (%d)%s"):format(c.action, c.n, c.place ~= "" and (" at a " .. c.place) or "")
+  return ("%s (%d)%s%s"):format(c.action, c.n, c.place ~= "" and (" at a " .. c.place) or "", c.canFail and " (can fail)" or "")
 end
+-- Why an item no longer goes into a camp action it used to (e.g. Scarce Herb Seeds and the Seed Hybridizer).
+function M.CampOff(id) return D.campOff and D.campOff[id] end
 
 -- Known recipes ---------------------------------------------------------------------------
 function M.Knows(r) return char ~= nil and char.learned[r.product] == true end
@@ -178,17 +185,33 @@ function M.Chain(itemID, depth, seen)
   return node
 end
 
--- Item ids whose name contains text (case-insensitive) and that are used in or made by a recipe.
+-- True when text starts one of the words in name ("copp" matches "Handful of Copper Bolts", "opper" doesn't).
+-- Both are lower case. A word starts after anything that isn't a letter, digit or apostrophe.
+function M.WordStartMatch(name, text)
+  local init = 1
+  while true do
+    local i = name:find(text, init, true)
+    if not i then return false end
+    if i == 1 or not name:sub(i - 1, i - 1):match("[%w']") then return true end
+    init = i + 1
+  end
+end
+
+-- Item ids with a word starting with text (case-insensitive) that are used in, made by or used up by a recipe or
+-- camp action. An exact name match comes first, then most uses.
 function M.Search(text, limit)
-  text = (text or ""):lower()
-  local out = {}
+  text = (text or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+  local out, exact = {}, {}
   if text == "" then return out end
   local function try(id, name)
-    if name and name:lower():find(text, 1, true) and (M.byReagent[id] or M.byProduct[id] or M.byCamp[id]) then out[#out + 1] = id end
+    if not name or not (M.byReagent[id] or M.byProduct[id] or M.byCamp[id]) then return end
+    local lname = name:lower()
+    if M.WordStartMatch(lname, text) then out[#out + 1] = id; exact[id] = lname == text end
   end
   for id, name in pairs(D.names) do try(id, name) end
   for id, name in pairs(db and db.names or {}) do if not D.names[id] then try(id, name) end end
   table.sort(out, function(a, b)
+    if exact[a] ~= exact[b] then return exact[a] end
     local ua, ub = #(M.byReagent[a] or {}), #(M.byReagent[b] or {})
     if ua ~= ub then return ua > ub end
     return a < b
@@ -205,6 +228,33 @@ function M.ParseItem(arg)
   return hits[1]
 end
 
+-- "Show only" filters ------------------------------------------------------------------------
+-- Your professions are the ones the addon has seen in your profession windows.
+function M.HasProfessions() return char ~= nil and next(char.skills) ~= nil end
+function M.MyProfession(r) return char ~= nil and char.skills[r.prof] ~= nil end
+
+-- Keeps the entries ({ r, pr }) that pass the ticked filters. Until you've opened a profession window there is
+-- nothing to match "My professions" against, so that box lets everything through.
+function M.FilterList(list, f)
+  f = f or settings
+  local mine = f.filterMine and M.HasProfessions()
+  local out = {}
+  for _, e in ipairs(list) do
+    if (not f.filterKnown or M.Knows(e.r)) and (not mine or M.MyProfession(e.r)) and (not f.filterPriced or e.pr.profit ~= nil) then
+      out[#out + 1] = e
+    end
+  end
+  return out
+end
+
+-- The most profitable recipe that uses itemID (unpriced ones only when nothing is priced), or nil.
+function M.BestNext(itemID)
+  local list = M.UsesOf(itemID)
+  return list[1]
+end
+
+function M.CountKeys(t) local n = 0; for _ in pairs(t or {}) do n = n + 1 end; return n end
+
 function M.Settings() return settings end
 function M.DB() return db end
 
@@ -214,13 +264,15 @@ local function addLines(tooltip, itemID)
   local made = M.byProduct[itemID]
   local camp = M.byCamp[itemID]
   if M.NoRecipe(itemID) then tooltip:AddLine("This copy can't be used in recipes (Dwarf Explorer's Bible)", 1, 0.45, 0.45) end
-  if not uses and not made and not camp then return end
+  local campOff = M.CampOff(itemID)
+  if not uses and not made and not camp and not campOff then return end
   if uses then tooltip:AddLine(("Used in %d recipe%s (Dwarf Explorer's Bible)"):format(#uses, #uses == 1 and "" or "s"), 0.4, 0.8, 1) end
   if camp then
     local parts = {}
     for _, c in ipairs(camp) do parts[#parts + 1] = M.CampText(c) end
     tooltip:AddLine("Camp: " .. table.concat(parts, ", "), 0.4, 0.8, 1, true)
   end
+  if campOff then tooltip:AddLine(campOff, 1, 0.45, 0.45, true) end
   if M.VendorCapped(itemID) then
     local cap = P.Cap(itemID)
     tooltip:AddLine("Sold by a vendor in Forever: don't pay more at the AH" .. (cap and (" (" .. C.Money(cap) .. ")") or ""), 1, 0.82, 0, true)
@@ -255,7 +307,11 @@ local function OnItemTooltip(tooltip, data)
 end
 
 -- Events ---------------------------------------------------------------------------------
-local migrations = { [1] = function(d) d.chars = d.chars or {}; d.extra = d.extra or {}; d.names = d.names or {}; d.cache = d.cache or {} end }
+local migrations = {
+  [1] = function(d) d.chars = d.chars or {}; d.extra = d.extra or {}; d.names = d.names or {}; d.cache = d.cache or {} end,
+  -- 1.2.0: trade-goods drops learned from your own kills (see Drops.lua).
+  [2] = function(d) d.drops = d.drops or {}; d.dropKills = d.dropKills or {}; d.mobNames = d.mobNames or {}; d.dropDone = d.dropDone or {} end,
+}
 
 function M.Init()
   db = Core.Migrate(KennyDwarfExplorersBibleDB, migrations, SCHEMA)
@@ -273,6 +329,7 @@ function M.Init()
   db.vendorCap = db.vendorCap or {}
   P.capCache = db.vendorCap
   M.BuildIndex()
+  if ns.Drops then ns.Drops.Attach(db) end
 end
 
 local f = CreateFrame("Frame")
@@ -346,7 +403,7 @@ SlashCmdList.KENNYDWARFEXPLORERSBIBLE = function(msg)
   elseif lc == "tooltip" then settings.tooltip = not settings.tooltip; Core.Print("tooltip line " .. (settings.tooltip and "on" or "off"))
   elseif lc == "altclick" then settings.altClick = not settings.altClick; Core.Print("alt-click " .. (settings.altClick and "on" or "off"))
   elseif lc == "report" then
-    Core.ShowReport({ "schema " .. tostring(db.schema), "recipes " .. #M.recipes .. " (data " .. tostring(D.build) .. ")", "price sources: " .. table.concat(P.Installed(), ", "),
+    Core.ShowReport({ "schema " .. tostring(db.schema), "recipes " .. #M.recipes .. " (data " .. tostring(D.build) .. ")", "price sources: " .. table.concat(P.Installed(), ", "), "mobs with learned drops: " .. M.CountKeys(db.drops),
       "order " .. settings.sources })
   elseif lc == "help" then
     Core.Print("/deb [item, link or name] | sources | prefer <id> | order a,b,c | tooltip | altclick | report")

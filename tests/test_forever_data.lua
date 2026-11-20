@@ -1,5 +1,6 @@
 -- Checks the bundled Forever data (client tables + server hotfixes) and the 1.1.0 tooltip/price additions.
--- Expected values come from Forever's client DB2 tables and wago.tools hotfix rows for build 70888.
+-- Expected values come from Forever's client DB2 tables and wago.tools hotfix rows for build 70959 (1.2.0), plus the
+-- server-only camp changes in Blizzard's Nov 19, 2026 hotfix notes.
 package.path = "./tests/?.lua;" .. package.path
 local M = require("mock_wow")
 M.install()
@@ -34,7 +35,7 @@ local function tooltipFor(id)
   return table.concat(tipLines, "\n")
 end
 
-M.check(D.build == "1.60.1.70888", "data stamped with its client build")
+M.check(D.build == "1.60.1.70959", "data stamped with its client build")
 M.check(#RM.recipes == 2090, "2,090 bundled recipes (1,971 in 1.0.5): " .. #RM.recipes)
 
 -- 1. Herbalism, Skinning and Fishing camp crafts (skill levels after the hotfix).
@@ -68,10 +69,10 @@ for _, c in ipairs(seeds or {}) do
 end
 M.check(plant and plant.n == 1 and plant.place == "Greenhouse", "plant 1 seed at a Greenhouse")
 M.check(hyb and hyb.n == 2 and hyb.place == "Seed Hybridizer", "hybridize 2 seeds at a Seed Hybridizer")
-for _, id in ipairs({ 268416, 268417, 268418 }) do M.check(RM.CampUses(id) and #RM.CampUses(id) == 2, "seed " .. id .. " camp uses") end
+for _, id in ipairs({ 268416, 268417 }) do M.check(RM.CampUses(id) and #RM.CampUses(id) == 2, "seed " .. id .. " camp uses") end
 M.check(RM.CampUses(268419) == nil, "fifth seed tier (item still hidden) left out")
 local tip = tooltipFor(268415)
-M.check(tip:find("Camp: Plant Seeds (1) at a Greenhouse, Hybridize Seeds (2) at a Seed Hybridizer", 1, true), "seed tooltip names both camp uses")
+M.check(tip:find("Camp: Plant Seeds (1) at a Greenhouse, Hybridize Seeds (2) at a Seed Hybridizer (can fail)", 1, true), "seed tooltip names both camp uses")
 M.check(not tip:find("Used in", 1, true), "seeds aren't counted as recipes")
 M.check(RM.Search("herb seeds")[1] ~= nil and RM.ParseItem("commonplace herb seeds") == 268415, "seeds can be searched")
 
@@ -147,4 +148,23 @@ M.check(not RM.NoRecipe(3385) and not tooltipFor(3385):find("can't be used", 1, 
 -- 11. Tools a recipe needs.
 local salv = RM.Tools(bySpell(1263056))
 M.check(salv and table.concat(salv, ","):find("Runed Golden Rod", 1, true), "Arcane Salvager needs a Runed Golden Rod (Nov 10 hotfix)")
+-- 12. Nov 19, 2026 hotfix (Blizzard notes): Seed Hybridizer back with a failure chance; Scarce Herb Seeds can't go in.
+M.check(hyb and hyb.canFail == true and plant and not plant.canFail, "hybridizing can fail, planting can't")
+for _, id in ipairs({ 268415, 268416, 268417 }) do
+  local ok = false
+  for _, c in ipairs(RM.CampUses(id) or {}) do if c.action == "Hybridize Seeds" and c.canFail then ok = true end end
+  M.check(ok, "seed " .. id .. ": Hybridize Seeds marked 'can fail'")
+end
+local scarce = RM.CampUses(268418)
+M.check(scarce and #scarce == 1 and scarce[1].action == "Plant Seeds" and scarce[1].place == "Greenhouse", "Scarce Herb Seeds: only Plant Seeds left")
+for _, c in ipairs(scarce or {}) do M.check(c.spell ~= 1282620, "Scarce Herb Seeds' Hybridize Seeds (1282620) is gone") end
+M.check(RM.CampOff(268418) and RM.CampOff(268418):find("hybridized", 1, true), "Scarce Herb Seeds say why they can't be hybridized")
+M.check(not RM.CampOff(268415), "other seeds aren't flagged")
+tip = tooltipFor(268418)
+M.check(tip:find("Camp: Plant Seeds (1) at a Greenhouse", 1, true) and not tip:find("Hybridize Seeds (2)", 1, true), "Scarce seed tooltip: plant only")
+M.check(tip:find("Can't be hybridized since the Nov 19 hotfix", 1, true), "Scarce seed tooltip says it can't be hybridized")
+M.check(RM.Search("scarce")[1] == 268418, "Scarce Herb Seeds still searchable")
+M.check(#D.camp == 7, "7 camp actions (8 before the Nov 19 hotfix)")
+local seedHyb = bySpell(1263070)
+M.check(seedHyb and seedHyb.prof == "Herbalism", "the Seed Hybridizer itself is still craftable (re-enabled Nov 19)")
 M.done("Forever data")

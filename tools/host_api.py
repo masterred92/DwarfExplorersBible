@@ -13,6 +13,7 @@ HOST = {
     "KennyMatTooltip": "our own MatTooltip addon (github.com/masterred92/MatTooltip), optional",
     "KennyNeutralFlip": "our own NeutralFlip addon (github.com/masterred92/NeutralFlip)",
     "KennyGoldPerSpot": "our own GoldPerSpot addon (github.com/masterred92/GoldPerSpot)",
+    "GetLootSourceInfo": "client loot global (slot -> guid, quantity, ...); not called in Blizzard's Forever UI source (checked 1.60.1.70532 and Gethe forever 1.60.1.71037), so Drops.lua feature-tests it and falls back to your dead target",
     "PlaySoundFile": "client API; used on 16001 by BigWigs Core/PluginPrototype.lua and DBM (not in Blizzard's own UI source)",
     "DBM": "DBM-Core global (DBM-Core.lua); RegisterCallback/CreateBreakTimer/CreatePullTimer/CreatePizzaTimer/ReleaseRevision",
     "BigWigsLoader": "BigWigs Loader.lua global; RegisterMessage, GetReleaseString",
