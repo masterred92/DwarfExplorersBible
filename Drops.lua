@@ -1,7 +1,8 @@
 -- Drops.lua: learns which trade goods each mob drops, from corpses you loot yourself. It only reads the loot window
 -- you opened (GetNumLootItems / GetLootSlotType / GetLootSlotInfo / GetLootSlotLink / GetLootSourceInfo); it never
 -- loots, targets or clicks anything. Every client value goes through the secret guards in Compat.lua: if the mob's
--- GUID or any item in the window is hidden, the whole window is skipped, so a rate is never built from a partial look.
+-- GUID or any item in the window is hidden, the whole window is skipped, so a rate is never built from a partial look;
+-- every corpse GUID that could still be read is then marked done, so reopening it half-looted can't count it either.
 -- No third-party loot data: everything shown comes from your own kills.
 local _, ns = ...
 local C, Core, M = ns.Compat, ns.Core, ns.RM
@@ -9,13 +10,13 @@ local L = {}
 ns.Drops = L
 
 L.MIN_LOOTS = 20        -- a rate is shown only after this many of your own kills of that mob
-L.GATHER_WINDOW = 1.5   -- seconds: a loot window this soon after one of your casts may be skinning/mining/herbing
+L.GATHER_WINDOW = 1.5   -- seconds: a loot window this soon after a gathering / opening / pick pocket cast of yours
 L.DONE_SIZE = 200       -- corpse GUIDs remembered (across /reload) so a corpse is counted once
 local TRADE_GOODS = Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods or 7
 local SLOT_ITEM = Enum and Enum.LootSlotType and Enum.LootSlotType.Item or 1
 
 local db
-local lastCast = nil
+local lastCast = nil    -- { at = C.Clock(), kind = "gather" | "pickpocket" }, from your own UNIT_SPELLCAST_SUCCEEDED
 
 -- Saved data: drops[creatureID][itemID] = { loots = kills counted, seen = kills it dropped in }; kills[creatureID] =
 -- corpses counted; names[creatureID] = mob name (learned from your target or the mob tooltip); done = recent GUIDs.
@@ -112,6 +113,28 @@ function L.ReadWindow()
   return corpses
 end
 
+-- Every corpse GUID in the open window that the client lets us read (used to retire a window we had to skip).
+function L.ReadableCorpses()
+  local out = {}
+  local n = GetNumLootItems and C.SafeNumber(GetNumLootItems()) or 0
+  if GetLootSourceInfo then
+    for slot = 1, n do
+      local raw = { GetLootSourceInfo(slot) }
+      for i = 1, #raw, 2 do
+        local guid = str(raw[i])
+        if guid and L.CreatureID(guid) then out[guid] = true end
+      end
+    end
+  end
+  local guid = UnitGUID and str(UnitGUID("target"))
+  if guid and UnitIsDead and C.Safe(UnitIsDead("target")) == true and L.CreatureID(guid) then out[guid] = true end
+  return out
+end
+
+local function retire(guids)
+  for guid in pairs(guids) do if not isDone(guid) then markDone(guid) end end
+end
+
 -- Counts each creature corpse once. A newly seen item starts at the mob's kill count: those earlier corpses were
 -- read in full and didn't have it.
 function L.Record(corpses)
@@ -151,21 +174,31 @@ function L.OnLootOpened(isFromItem)
     local fishing = IsFishingLoot()
     if C.IsSecret(fishing) or fishing then return 0, "fishing" end
   end
+  local recent = lastCast and C.Clock() - lastCast.at <= L.GATHER_WINDOW and lastCast.kind
+  -- Pick Pocket: the mob is still alive, so leave it unmarked and count its corpse when you kill and loot it.
+  if recent == "pickpocket" then return 0, "pick pocket" end
   local corpses, why = L.ReadWindow()
-  if not corpses then return 0, why end
-  if lastCast and C.Clock() - lastCast <= L.GATHER_WINDOW then
-    -- Skinning (or mining a corpse) right after a cast of yours: not the kill's loot. Mark the corpse so a
+  if not corpses then
+    if why ~= "empty" and why ~= "no loot API" then retire(L.ReadableCorpses()) end
+    return 0, why
+  end
+  if recent == "gather" then
+    -- Skinning (or herbs / ore from a corpse) right after your cast: not the kill's loot. Retire the corpse so a
     -- reopened, half-emptied window can't be counted later either.
-    for guid in pairs(corpses) do if not isDone(guid) then markDone(guid) end end
+    retire(corpses)
     return 0, "gathering"
   end
   learnTargetName(corpses)
   return L.Record(corpses)
 end
 
--- A cast of yours just before a loot window: skinning, mining, herbing or opening, not a kill's loot.
-function L.OnCast(unit)
-  if C.IsSecret(unit) or unit == "player" then lastCast = C.Clock() end
+-- Your own successful casts (registered for "player" only). Only the spells in Data.lootCasts (SpellEffect open
+-- lock / skinning / pickpocket, from DB2) count; Auto Shot, Shoot and combat spells don't. A hidden spell ID is
+-- ignored rather than guessed.
+function L.OnCast(unit, _, spellID)
+  if unit ~= "player" or C.IsSecret(spellID) then return end
+  local kind = ns.Data and ns.Data.lootCasts and ns.Data.lootCasts[C.SafeNumber(spellID) or -1]
+  if kind then lastCast = { at = C.Clock(), kind = kind } end
 end
 
 function L.MobName(cid) return (db and db.mobNames[cid]) or ("NPC " .. tostring(cid)) end
@@ -188,7 +221,8 @@ function L.RatesFor(cid)
 end
 
 -- Mobs that dropped itemID. rows = those with MIN_LOOTS or more kills (most likely first); kills = all your counted
--- kills of every mob that has dropped it; learning = how many mobs are still under the threshold.
+-- kills of every mob that has dropped it, shown or not (the UI's title counts only rows); learning = how many mobs
+-- are still under the threshold.
 function L.SourcesOf(itemID)
   local rows, kills, learning = {}, 0, 0
   for cid, rec in pairs(db and db.drops or {}) do
@@ -212,6 +246,12 @@ function L.AddUnitLines(tooltip, guid, name)
   if not cid or not db then return end
   name = str(name)
   if name then db.mobNames[cid] = name end
+  local kills = db.dropKills[cid] or 0
+  if kills > 0 and kills < L.MIN_LOOTS then
+    -- Mist (BCD3E6), the style table's idle text colour.
+    tooltip:AddLine(("Learning drops: %d of %d kills"):format(kills, L.MIN_LOOTS), 0.74, 0.83, 0.90)
+    return
+  end
   local rates = L.RatesFor(cid)
   if #rates == 0 then return end
   tooltip:AddLine("Trade goods (Dwarf Explorer's Bible, " .. L.Label(rates[1].loots) .. "):", 0.4, 0.8, 1)
@@ -234,12 +274,12 @@ end
 local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_LOGIN")
 f:RegisterEvent("LOOT_OPENED")
-f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-f:SetScript("OnEvent", function(_, event, arg1, arg2)
+f:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+f:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
   if event == "LOOT_OPENED" then
     Core.SafeCall("loot", L.OnLootOpened, arg2)
   elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-    L.OnCast(arg1)
+    L.OnCast(arg1, arg2, arg3)
   elseif event == "PLAYER_LOGIN" then
     if TooltipDataProcessor and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Unit then
       TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnUnitTooltip)

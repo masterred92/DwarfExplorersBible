@@ -1,5 +1,5 @@
 -- Checks the bundled Forever data (client tables + server hotfixes) and the 1.1.0 tooltip/price additions.
--- Expected values come from Forever's client DB2 tables and wago.tools hotfix rows for build 70959 (1.2.0), plus the
+-- Expected values come from Forever's client DB2 tables and wago.tools hotfix rows for build 70959, applied to build 71037 (1.2.0), plus the
 -- server-only camp changes in Blizzard's Nov 19, 2026 hotfix notes.
 package.path = "./tests/?.lua;" .. package.path
 local M = require("mock_wow")
@@ -35,7 +35,7 @@ local function tooltipFor(id)
   return table.concat(tipLines, "\n")
 end
 
-M.check(D.build == "1.60.1.70959", "data stamped with its client build")
+M.check(D.build == "1.60.1.71037", "data stamped with its client build")
 M.check(#RM.recipes == 2090, "2,090 bundled recipes (1,971 in 1.0.5): " .. #RM.recipes)
 
 -- 1. Herbalism, Skinning and Fishing camp crafts (skill levels after the hotfix).

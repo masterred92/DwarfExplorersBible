@@ -1,7 +1,8 @@
 -- The Guide window (1.2.0 layout, from UI Bot's approved mockup): search with live results, Back + breadcrumb,
--- the picked material with its price, "Show only" filters, one row per recipe, the crafting chain for the selected
--- row, and the mobs it drops from (learned from your own kills, Drops.lua).
--- Click a row to put it in the chain strip; click it again (or a step in the strip) to open that item.
+-- the picked material with its price, "Show only" filters, one row per recipe, the crafting chain strip, and the
+-- mobs it drops from (learned from your own kills, Drops.lua).
+-- LAYOUT.STRIP_MODE "hover" (default, Kenny Nov 20): one click opens a row; the strip follows the row you point at
+-- and stays on it after the mouse leaves. "click": the first click puts a row in the strip, a second click opens it.
 local _, ns = ...
 local C, M = ns.Compat, ns.RM
 
@@ -9,7 +10,10 @@ local C, M = ns.Compat, ns.RM
 local LAYOUT = {
   width = 660, height = 632,
   bg = { 0.05, 0.04, 0.02, 1 },          -- opaque (Kenny's pick); the old window was 0.94 over a tooltip texture
-  rows = 8, rowH = 40, rowsTop = 162,
+  STRIP_MODE = "hover",                  -- "hover" or "click" (see the top of this file)
+  filtersTop = 132, hintTop = 157,       -- the grey hint under the filters sits in its own 14 px slot
+  rows = 8, rowH = 40, rowsTop = 174,
+  chainH = 34,                           -- one chain step: icon + two 12 pt lines
   searchW = 210, popupW = 300, popupRows = 8,
   chainSteps = 4, chainStepMaxW = 150,
   hoverAlpha = 0.08,                     -- keeps grey (808080) text at 4.5:1 or better on the row stripe
@@ -17,10 +21,26 @@ local LAYOUT = {
 M.LAYOUT = LAYOUT
 local DIFF = { orange = { 1, 0.5, 0.25 }, yellow = { 1, 1, 0 }, green = { 0.25, 0.75, 0.25 }, grey = { 0.5, 0.5, 0.5 } }
 local GOLD = { 1, 0.82, 0 }
+local WHITE = { 1, 1, 1 }                -- recipes with no skill data (grey means "no skill-up")
+local MIST = { 0.74, 0.83, 0.90 }        -- Mist (BCD3E6), the style table's idle / hint text
+M.COLORS = { DIFF = DIFF, GOLD = GOLD, WHITE = WHITE, MIST = MIST }
+-- Vertical positions derived from LAYOUT (the headless render in notes/deb-1.2.0-render reads these too).
+function M.LayoutY()
+  local L = LAYOUT
+  local chainTop = L.rowsTop + L.rows * L.rowH + 10     -- the rule above the chain strip
+  local dropsTop = chainTop + 18 + L.chainH + 10         -- the rule above "Drops from"
+  return { chainTop = chainTop, chainLabel = chainTop + 1, chainSteps = chainTop + 18, dropsTop = dropsTop,
+    dropsLine = dropsTop + 4, footRule = L.height - 44, footKey = L.height - 40, footNote = L.height - 24 }
+end
 local READY = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t"
 
 local win
 local state = { id = nil, mode = "uses", offset = 0, history = {}, list = {}, total = 0, selected = nil }
+local function hoverMode() return LAYOUT.STRIP_MODE ~= "click" end
+function M.StripLabel()
+  if state.mode ~= "uses" then return "Where the selected recipe's reagent comes in:" end
+  return hoverMode() and "Crafting chain for the row you point at:" or "Crafting chain for the selected row:"
+end
 
 local function isTable(v) return type(v) == "table" end
 
@@ -77,7 +97,7 @@ function M.ChainSteps(id, e)
   if not id then return steps end
   local prev = state.history[#state.history]
   if prev then steps[#steps + 1] = { id = prev, sub = "start here" } end
-  local how = prev and nil or "start here"
+  local how = (not prev) and "start here" or nil
   if prev then
     for _, r in ipairs(M.byProduct[id] or {}) do
       for _, g in ipairs(r.reagents) do if g.id == prev and not how then how = profSkill(r) end end
@@ -85,7 +105,16 @@ function M.ChainSteps(id, e)
     if not how and M.byProduct[id] and M.byProduct[id][1] then how = profSkill(M.byProduct[id][1]) end
   end
   steps[#steps + 1] = { id = id, sub = how or "", current = true }
-  if e and state.mode == "uses" then
+  if not e and state.mode == "uses" then
+    -- Before you point at a row: this item's own chain, its most profitable use at each step.
+    local cur, seen = id, { [id] = true }
+    while #steps < LAYOUT.chainSteps + 1 do
+      local nxt = M.BestNext(cur)
+      if not nxt or seen[nxt.r.product] then break end
+      steps[#steps + 1] = { id = nxt.r.product, sub = profSkill(nxt.r) }
+      seen[nxt.r.product] = true; cur = nxt.r.product
+    end
+  elseif e and state.mode == "uses" then
     steps[#steps + 1] = { id = e.r.product, sub = profSkill(e.r) }
     local nxt = M.BestNext(e.r.product)
     if nxt then steps[#steps + 1] = { id = nxt.r.product, sub = profSkill(nxt.r) } end
@@ -94,14 +123,17 @@ function M.ChainSteps(id, e)
     local g = e.r.reagents[1]
     if g then table.insert(steps, #steps, { id = g.id, sub = "reagent" }) end
   end
-  while #steps > LAYOUT.chainSteps do table.remove(steps, 1) end
+  while #steps > LAYOUT.chainSteps do
+    if steps[1].current then table.remove(steps) else table.remove(steps, 1) end
+  end
   return steps
 end
 
--- "Drops from (your N kills)" and a short summary for the collapsed line.
+-- "Drops from (your N kills)" and a short summary for the collapsed line. N counts only the mobs listed (those with
+-- a rate, MIN_LOOTS kills or more); with none listed yet the title is plain "Drops from".
 function M.DropsSummary(id)
   local Dr = ns.Drops
-  if not (Dr and id) then return "Drops from (your 0 kills)", "", {} end
+  if not (Dr and id) then return "Drops from", "", {} end
   local s = Dr.SourcesOf(id)
   local summary
   if #s.rows > 0 then
@@ -116,7 +148,9 @@ function M.DropsSummary(id)
   else
     summary = "Not seen yet: learns from corpses you loot."
   end
-  return ("Drops from (your %d kills)"):format(s.kills), summary, s.rows
+  local shown = 0
+  for _, e in ipairs(s.rows) do shown = shown + e.loots end
+  return shown > 0 and ("Drops from (your %d kills)"):format(shown) or "Drops from", summary, s.rows
 end
 
 -- Search popup rows: { id, name, right } for items with a word starting with text.
@@ -140,10 +174,11 @@ local function buildList()
   end
   state.total = #all
   state.list = M.FilterList(all, M.Settings())
-  -- Keep the selected row if it's still listed, else the most profitable one (the list is best-first).
+  -- Keep the row in the strip if it's still listed. Click mode starts on the most profitable row (the list is
+  -- best-first); hover mode starts on the page item's own chain.
   local keep
   for _, e in ipairs(state.list) do if state.selected and e.r == state.selected.r then keep = e end end
-  state.selected = keep or state.list[1]
+  state.selected = keep or (not hoverMode() and state.list[1] or nil)
 end
 
 function M.SetFilter(key, on)
@@ -168,7 +203,7 @@ local function refreshRows()
     local row, e = win.rows[i], state.list[i + state.offset]
     if e then
       local name, money, reag, right, d = M.RowText(e)
-      row.name:SetText(name); setColor(row.name, d and DIFF[d] or GOLD)
+      row.name:SetText(name); setColor(row.name, d and DIFF[d] or WHITE)
       row.money:SetText(money); row.reag:SetText(reag); row.right:SetText(right)
       if row.icon.SetTexture then row.icon:SetTexture(itemIcon(e.r.product) or "Interface\\Icons\\INV_Misc_QuestionMark") end
       row.selected:SetShown(state.selected == e)
@@ -207,16 +242,16 @@ local function refreshChain()
       if b.icon.SetTexture then b.icon:SetTexture(itemIcon(s.id) or "Interface\\Icons\\INV_Misc_QuestionMark") end
       local w = ws[i]
       b.name:SetWidth(w - 28); b.sub:SetWidth(w - 28)
-      b:SetWidth(w); b:ClearAllPoints(); b:SetPoint("TOPLEFT", win, "TOPLEFT", x, -(LAYOUT.rowsTop + LAYOUT.rows * LAYOUT.rowH + 30))
+      b:SetWidth(w); b:ClearAllPoints(); b:SetPoint("TOPLEFT", win, "TOPLEFT", x, -M.LayoutY().chainSteps)
       b.cur:SetShown(s.current == true)
       b.id = s.id; b:Show()
       x = x + w
       local arrow = win.arrows[i]
-      if steps[i + 1] then arrow:ClearAllPoints(); arrow:SetPoint("TOPLEFT", win, "TOPLEFT", x + 3, -(LAYOUT.rowsTop + LAYOUT.rows * LAYOUT.rowH + 35)); arrow:Show(); x = x + 20
+      if steps[i + 1] then arrow:ClearAllPoints(); arrow:SetPoint("TOPLEFT", win, "TOPLEFT", x + 3, -(M.LayoutY().chainSteps + 5)); arrow:Show(); x = x + 20
       else arrow:Hide() end
     else b.id = nil; b:Hide(); win.arrows[i]:Hide() end
   end
-  win.chainLabel:SetText(state.mode == "uses" and "Crafting chain for the selected row:" or "Where the selected recipe's reagent comes in:")
+  win.chainLabel:SetText(M.StripLabel())
 end
 
 local function refreshDrops()
@@ -264,6 +299,8 @@ function M.Refresh()
   win.count:SetText(id and (#state.list .. " of " .. state.total) or "")
   local s = M.Settings()
   win.fKnown:SetChecked(s.filterKnown); win.fMine:SetChecked(s.filterMine); win.fPriced:SetChecked(s.filterPriced)
+  local hint = M.FilterHint()
+  win.hint:SetText(hint or ""); win.hint:SetShown(hint ~= nil)
   win.foot:SetText(("Prices from %s (/deb sources). Profit is after the %d%% AH cut."):format(
     table.concat(ns.Prices.Installed(), ", "), math.floor((s.ahCut or 0.05) * 100 + 0.5)))
   refreshRows(); refreshChain(); refreshDrops()
@@ -287,7 +324,9 @@ local function rowTooltip(row)
   GameTooltip:AddDoubleLine("Sells for (after AH cut)", e.pr.value and (C.Money(e.pr.value) .. (pl and (" (" .. pl .. ")") or "")) or "no price", 1, 0.82, 0)
   if e.pr.profit then GameTooltip:AddDoubleLine("Profit", C.Money(math.abs(e.pr.profit)) .. (e.pr.profit < 0 and " loss" or ""), 0.2, 1, 0.2) end
   if pp == nil then GameTooltip:AddLine("Search it at the auction house to price it.", 0.6, 0.6, 0.6, true) end
-  GameTooltip:AddLine(state.selected == e and "Click: what can I make from this?" or "Click: show its crafting chain. Click again to open it.", 0.4, 0.8, 1, true)
+  local open = state.mode == "uses" and "what can I make from this?" or "open its first reagent."
+  if hoverMode() or state.selected == e then GameTooltip:AddLine("Click: " .. open, 0.4, 0.8, 1, true)
+  else GameTooltip:AddLine("Click: show its crafting chain. Click again to open it.", 0.4, 0.8, 1, true) end
   GameTooltip:Show()
 end
 
@@ -303,14 +342,50 @@ function M.Navigate(id, push)
   M.Refresh()
 end
 
--- Row click: the first click puts the row in the chain strip, a click on the selected row opens its item.
+-- The grey hint under the filters while "My professions" has nothing to match yet.
+function M.FilterHint()
+  local s = M.Settings()
+  if s and s.filterMine and not M.HasProfessions() then return "Open a profession window once to use this filter." end
+  return nil
+end
+
+local function openRow(e)
+  if state.mode == "uses" then M.Navigate(e.r.product, true)
+  elseif e.r.reagents[1] then M.Navigate(e.r.reagents[1].id, true) end
+end
+
+-- Pointing at a row (hover mode): the strip follows it and stays on it after the mouse leaves.
+function M.HoverRow(e)
+  if not e or not hoverMode() or state.selected == e then return end
+  state.selected = e
+  if win then refreshRows(); refreshChain() end
+end
+
+-- Row click. Hover mode: open it. Click mode: the first click puts it in the strip, a second click opens it.
 function M.ClickRow(e)
   if not e then return end
-  if state.selected == e and state.mode == "uses" then M.Navigate(e.r.product, true)
+  if hoverMode() then openRow(e)
+  elseif state.selected == e then openRow(e)
   else state.selected = e; if win then refreshRows(); refreshChain() end end
 end
 
+-- The Drops overlay over the recipe rows. The +/- button, Escape and Back close it.
+function M.DropsOverlayShown() return win ~= nil and win.dropsPanel:IsShown() == true end
+function M.SetDropsOverlay(on)
+  if not win then return end
+  local p = win.dropsPanel
+  p:SetShown(on and true or false)
+  win.dropsToggle:SetNormalTexture(on and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
+  win.dropsToggle:SetPushedTexture(on and "Interface\\Buttons\\UI-MinusButton-Down" or "Interface\\Buttons\\UI-PlusButton-Down")
+  -- Escape: take the keyboard only while the overlay is open and only out of combat (the propagate call is
+  -- restricted in combat; there Escape closes the whole window, which hides the overlay too).
+  if p.EnableKeyboard then p:EnableKeyboard(on and not C.InCombat() or false) end
+  if on then refreshDrops() end
+end
+
+-- Back: closes the Drops overlay if it's open (and stays on this page), else goes to the previous item.
 function M.GoBack()
+  if M.DropsOverlayShown() then M.SetDropsOverlay(false); return end
   local prev = table.remove(state.history)
   if prev then M.Navigate(prev, false) end
 end
@@ -333,7 +408,7 @@ end
 local function buildSearch()
   local search = CreateFrame("EditBox", "KennyDwarfExplorersBibleSearch", win, "SearchBoxTemplate")
   search:SetSize(LAYOUT.searchW, 22); search:SetPoint("TOPRIGHT", -34, -9); search:SetAutoFocus(false)
-  if isTable(search.Instructions) then search.Instructions:SetText("Type a material") end
+  if isTable(search.Instructions) then search.Instructions:SetFontObject("GameFontDisable"); search.Instructions:SetText("Type a material") end   -- template default is 10 pt
   win.search = search
   local pop = CreateFrame("Frame", nil, win, "BackdropTemplate")
   pop:SetSize(LAYOUT.popupW, 10 + 26 * LAYOUT.popupRows + 22)
@@ -429,13 +504,13 @@ local function build()
   rule(-124)
 
   -- Filters (remembered in SavedVariables) and the mode button
-  local label = fontString(win, "GameFontNormal", 14, -138)
+  local label = fontString(win, "GameFontNormal", 14, -(LAYOUT.filtersTop + 6))
   label:SetText("Show only:")
   local prevAnchor, x = label, 8
   local function check(key, text)
     local cb = CreateFrame("CheckButton", nil, win, "UICheckButtonTemplate")
     cb:SetSize(24, 24); cb:SetPoint("LEFT", prevAnchor, "RIGHT", x, 0)
-    if isTable(cb.Text) then cb.Text:SetText(text) end
+    if isTable(cb.Text) then cb.Text:SetFontObject("GameFontHighlight"); cb.Text:SetText(text) end   -- template default is 10 pt
     cb:SetScript("OnClick", function(s) M.SetFilter(key, s:GetChecked()) end)
     prevAnchor, x = isTable(cb.Text) and cb.Text or cb, 14
     return cb
@@ -444,11 +519,13 @@ local function build()
   win.fMine = check("filterMine", "My professions")
   win.fPriced = check("filterPriced", "Has a price")
   local mode = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
-  mode:SetSize(96, 22); mode:SetPoint("TOPRIGHT", -14, -132)
+  mode:SetSize(96, 22); mode:SetPoint("TOPRIGHT", -14, -LAYOUT.filtersTop)
   mode:SetScript("OnClick", function()
     state.mode = state.mode == "uses" and "made" or "uses"; state.offset = 0; state.selected = nil; M.Refresh()
   end)
   win.modeBtn = mode
+  win.hint = fontString(win, "GameFontHighlight", 14, -LAYOUT.hintTop)
+  win.hint:SetTextColor(MIST[1], MIST[2], MIST[3]); win.hint:Hide()
   win.count = fontString(win, "GameFontHighlight", 0, 0, "RIGHT")
   win.count:ClearAllPoints(); win.count:SetPoint("RIGHT", mode, "LEFT", -8, 0)
 
@@ -477,7 +554,7 @@ local function build()
     row.reag:SetTextColor(0.78, 0.78, 0.78); row.reag:SetWordWrap(false); row.reag:SetWidth(rowW - 44 - 220)
     row.right = fontString(row, "GameFontDisable", -8, -22, "TOPRIGHT")
     row:SetScript("OnClick", function(s) M.ClickRow(s.entry); rowTooltip(s) end)
-    row:SetScript("OnEnter", rowTooltip)
+    row:SetScript("OnEnter", function(r) M.HoverRow(r.entry); rowTooltip(r) end)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     win.rows[i] = row
   end
@@ -495,14 +572,22 @@ local function build()
   end)
 
   -- Chain strip
-  local cy = top + RH * LAYOUT.rows + 12
-  rule(-(cy - 4))
-  win.chainLabel = fontString(win, "GameFontNormal", 14, -(cy + 1))
+  local Y = M.LayoutY()
+  rule(-Y.chainTop)
+  win.chainLabel = fontString(win, "GameFontNormal", 14, -Y.chainLabel)
   win.chain, win.arrows = {}, {}
   for i = 1, LAYOUT.chainSteps do
     local b = CreateFrame("Button", nil, win)
-    b:SetSize(LAYOUT.chainStepMaxW, 36)
-    b.cur = b:CreateTexture(nil, "BACKGROUND"); b.cur:SetAllPoints(); b.cur:SetColorTexture(1, 0.82, 0, 0.14)
+    b:SetSize(LAYOUT.chainStepMaxW, LAYOUT.chainH)
+    -- The current page's item: a faint gold fill with a 1 px gold outline.
+    b.cur = CreateFrame("Frame", nil, b)
+    b.cur:SetAllPoints()
+    local fill = b.cur:CreateTexture(nil, "BACKGROUND"); fill:SetAllPoints(); fill:SetColorTexture(1, 0.82, 0, 0.14)
+    for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, 1 }, { "TOPLEFT", "BOTTOMLEFT", 1, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", 1, 0 } }) do
+      local t = b.cur:CreateTexture(nil, "BORDER"); t:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.85)
+      t:SetPoint(edge[1]); t:SetPoint(edge[2])
+      if edge[3] == 1 then t:SetWidth(1) else t:SetHeight(1) end
+    end
     b.icon = b:CreateTexture(nil, "ARTWORK"); b.icon:SetSize(18, 18); b.icon:SetPoint("TOPLEFT", 3, -3)
     b.name = fontString(b, "GameFontHighlight", 25, -3); b.name:SetWordWrap(false)
     b.sub = fontString(b, "GameFontDisable", 25, -19); b.sub:SetWordWrap(false)
@@ -515,8 +600,8 @@ local function build()
   end
 
   -- Drops from (learned from your kills); the + opens the full list over the recipe rows.
-  local dy = cy + 46
-  rule(-(dy - 4))
+  local dy = Y.dropsLine
+  rule(-Y.dropsTop)
   local plus = CreateFrame("Button", nil, win)
   plus:SetSize(16, 16); plus:SetPoint("TOPLEFT", 14, -(dy + 2))
   plus:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
@@ -534,19 +619,28 @@ local function build()
   for i = 1, 16 do panel.lines[i] = fontString(panel, "GameFontHighlight", 12, -8 - (i - 1) * 20) end
   panel.empty = fontString(panel, "GameFontDisable", 12, -8)
   win.dropsPanel = panel
-  plus:SetScript("OnClick", function()
-    panel:SetShown(not panel:IsShown())
-    plus:SetNormalTexture(panel:IsShown() and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
-    refreshDrops()
-  end)
   win.dropsToggle = plus
+  plus:SetScript("OnClick", function() M.SetDropsOverlay(not panel:IsShown()) end)
+  plus:SetScript("OnEnter", function(b)
+    GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(panel:IsShown() and "Close the drops list (or press Escape)" or "Show every mob it drops from")
+    GameTooltip:Show()
+  end)
+  plus:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  panel:SetScript("OnKeyDown", function(p, key)
+    if key == "ESCAPE" then
+      if p.SetPropagateKeyboardInput then p:SetPropagateKeyboardInput(false) end
+      M.SetDropsOverlay(false)
+    elseif p.SetPropagateKeyboardInput then p:SetPropagateKeyboardInput(true) end
+  end)
+  win:HookScript("OnHide", function() if panel:IsShown() then M.SetDropsOverlay(false) end end)
 
   -- Footer
-  rule(-(H - 46), 0.2)
-  local key = fontString(win, "GameFontHighlight", 14, -(H - 40))
+  rule(-Y.footRule, 0.2)
+  local key = fontString(win, "GameFontHighlight", 14, -Y.footKey)
   key:SetTextColor(0.78, 0.78, 0.78)
   key:SetText("Colours:  |cffff8040orange|r skill too low   |cffffff00yellow|r / |cff40bf40green|r skill-up   |cff808080grey|r no skill-up")
-  win.foot = fontString(win, "GameFontDisable", 14, -(H - 24))
+  win.foot = fontString(win, "GameFontDisable", 14, -Y.footNote)
 end
 
 function M.Open(id)

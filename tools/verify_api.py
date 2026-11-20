@@ -84,7 +84,7 @@ for f in files:
     m = re.search(r'for _, e in ipairs\(\{(.*?)\}\) do ev:RegisterEvent', code_nc, re.S)
     if m: evs |= set(re.findall(r'"(\w+)"', m.group(1)))
     for e in sorted(evs): report(e, e in events, "event documentation")
-    for t in sorted(set(re.findall(r'CreateFrame\("\w+",\s*[^,]+,\s*[^,]+,\s*"(\w+)"\)', code_nc))):
+    for t in sorted(set(re.findall(r'CreateFrame\("\w+",\s*[^,()\n]+,\s*[^,()\n]+,\s*"(\w+)"\)', code_nc))):
         report(t, rg(rf'name="{t}"[^>]*virtual="true"|name="{t}"', ("*.xml",)), "XML template")
     for fo in sorted(set(re.findall(r'"((?:Game|Chat)Font\w+)"', code_nc))):
         report(fo, rg(rf'name="{fo}"', ("*.xml",)) or rg(rf"^{fo} =|CreateFont\(\"{fo}\"\)"), "font object")

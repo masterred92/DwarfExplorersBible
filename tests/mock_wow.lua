@@ -10,7 +10,7 @@ local function frameObj(name)
   local fr = { events = {}, scripts = {}, shown = true, name = name, points = {}, kids = {} }
   local mt = {}
   mt.__index = function(t, k)
-    if k == "RegisterEvent" then return function(_, e) t.events[e] = true end end
+    if k == "RegisterEvent" or k == "RegisterUnitEvent" then return function(_, e) t.events[e] = true end end
     if k == "UnregisterEvent" then return function(_, e) t.events[e] = nil end end
     if k == "SetScript" then return function(_, s, fn) t.scripts[s] = fn end end
     if k == "GetScript" then return function(_, s) return t.scripts[s] end end
