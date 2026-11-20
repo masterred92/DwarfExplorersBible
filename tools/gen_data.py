@@ -17,7 +17,7 @@ tools/fetch_hotfixes.py <build> ItemSparse <dir>/itemsparse.json <those ids>.
 --hotfix-build takes the hotfix rows of an earlier build instead. Only use it when the two builds' client tables are
 identical (diff the CSVs first) and wago.tools hasn't listed the new build's hotfixes yet; the header says so.
 --vendor (nexus-devs/wow-classic-items data.json, MIT) only marks which reagents a vendor sells.
-The CSV exports each release was built from are kept under /workspace/wow-research/raw/deb-db2/<build>/ (see tools/README.md)."""
+The CSV exports each release was built from are kept under <deb-db2 export folder>/<build>/ (see tools/README.md)."""
 import argparse, csv, json, os, sys
 
 ap = argparse.ArgumentParser()
