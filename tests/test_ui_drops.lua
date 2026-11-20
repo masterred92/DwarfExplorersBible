@@ -397,13 +397,16 @@ M.check(not RM.DropsOverlayShown(), "the (-) in the overlay's header closes it")
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
 M.check(not RM.DropsOverlayShown(), "- in the same spot closes it")
--- Escape = Blizzard's CloseSpecialWindows over UISpecialFrames (no keyboard handler of ours).
+-- Escape = Blizzard's CloseSpecialWindows (UIParentPanelManager.lua 1106-1116): pairs over the live UISpecialFrames,
+-- Hide() on each shown frame (which runs its OnHide). Then the frame ends, so anything deferred with C_Timer runs.
 local function escape()
-  local names = {}
-  for i, n in ipairs(UISpecialFrames) do names[i] = n end
-  for _, n in ipairs(names) do local f = _G[n]; if f and f.shown then f.shown = false; if f.scripts.OnHide then f.scripts.OnHide(f) end end end
+  for _, n in pairs(UISpecialFrames) do
+    local f = _G[n]
+    if f and f.shown then f.shown = false; if f.scripts.OnHide then f.scripts.OnHide(f) end end
+  end
+  M.advance(0)
 end
-local function special(n) for _, x in ipairs(UISpecialFrames) do if x == n then return true end end return false end
+local function special(n) for _, x in pairs(UISpecialFrames) do if x == n then return true end end return false end
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
 M.check(special("KennyDwarfExplorersBibleDrops") and not special("KennyDwarfExplorersBibleFrame"), "overlay open: it, not the window, answers Escape")
 escape()
@@ -414,6 +417,20 @@ M.combat = true
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle); escape()
 M.check(not RM.DropsOverlayShown() and Wd.shown, "in combat too (nothing restricted is called)")
 M.combat = false
+-- A frame added to UISpecialFrames after the overlay opened (load-on-demand UI does this): one Escape closes the
+-- overlay and that frame, not the window; the next Escape closes the window. (Mutating the table during
+-- CloseSpecialWindows' pairs loop skipped the other frame and hid the window.)
+Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
+local lod = CreateFrame("Frame", "TestLoadOnDemandFrame"); lod.shown = true
+tinsert(UISpecialFrames, "TestLoadOnDemandFrame")
+escape()
+M.check(not RM.DropsOverlayShown() and not lod.shown and Wd.shown, "one Escape: the overlay and the other frame close, the window stays open")
+M.check(special("KennyDwarfExplorersBibleFrame") and not special("KennyDwarfExplorersBibleDrops"), "...and the window is back in UISpecialFrames")
+escape()
+M.check(not Wd.shown, "a second Escape closes the window")
+for i = #UISpecialFrames, 1, -1 do if UISpecialFrames[i] == "TestLoadOnDemandFrame" then table.remove(UISpecialFrames, i) end end
+RM.Open(2589)
+M.check(Wd.shown and st.id == 2589, "window reopened")
 local uiSrc = io.open("UI.lua"):read("*a")
 M.check(not uiSrc:find("OnKeyDown", 1, true) and not uiSrc:find("EnableKeyboard", 1, true) and not uiSrc:find("SetPropagateKeyboardInput", 1, true),
   "the window never takes the keyboard, so it can't swallow keybinds")

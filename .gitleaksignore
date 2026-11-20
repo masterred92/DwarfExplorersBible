@@ -1,0 +1,2 @@
+# Fake creature GUID in a test (d939aec), not a secret; the line was shortened in 0be3b11.
+d939aecbb74002edf65d6ed1ece7802f8eab097f:tests/test_ui_drops.lua:generic-api-key:202

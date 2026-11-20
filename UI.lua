@@ -378,7 +378,9 @@ end
 function M.DropsOverlayShown() return win ~= nil and win.dropsPanel:IsShown() == true end
 -- Escape, without ever taking the keyboard (no key handler, so no keybind can be swallowed, in or out of combat):
 -- while the overlay is open it, not the window, is the one in UISpecialFrames, so Escape (CloseSpecialWindows)
--- closes just the overlay; once it's closed the window is back in the list.
+-- closes just the overlay; once it's closed the window is back in the list. The list is never changed from inside
+-- an OnHide: CloseSpecialWindows walks it with pairs() while it hides frames, so the panel's OnHide only updates the
+-- button and defers the swap to the next frame.
 local WIN_NAME, DROPS_NAME = "KennyDwarfExplorersBibleFrame", "KennyDwarfExplorersBibleDrops"
 local function special(name, on)
   if type(UISpecialFrames) ~= "table" then return end
@@ -387,19 +389,31 @@ local function special(name, on)
 end
 M.Special = special
 
-local function overlayChanged(on)
+-- Puts whichever of the overlay / window is showing in UISpecialFrames (from the panel's current state).
+local function swapSpecial()
+  if not win then return end
+  local on = win.dropsPanel:IsShown() == true
   special(DROPS_NAME, on); special(WIN_NAME, not on)
+end
+
+local function overlayVisuals(on)
   win.dropsToggle:SetNormalTexture(on and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
   win.dropsToggle:SetPushedTexture(on and "Interface\\Buttons\\UI-MinusButton-Down" or "Interface\\Buttons\\UI-PlusButton-Down")
   if on then refreshDrops() end
   refreshRows()   -- hides the list's scrollbar under the overlay, brings it back after
 end
-M.OverlayChanged = overlayChanged
+
+-- The panel's OnHide (Escape, the window closing): button and scrollbar now, the UISpecialFrames swap next frame.
+local function overlayHidden()
+  overlayVisuals(false)
+  if C_Timer and C_Timer.After then C_Timer.After(0, swapSpecial) else swapSpecial() end
+end
 
 function M.SetDropsOverlay(on)
   if not win then return end
-  win.dropsPanel:SetShown(on and true or false)
-  overlayChanged(on and true or false)   -- the panel's OnHide calls it too (Escape hides the panel directly)
+  on = on and true or false
+  win.dropsPanel:SetShown(on)
+  overlayVisuals(on); swapSpecial()   -- from a click or Back, never from inside CloseSpecialWindows
 end
 
 -- Back: closes the Drops overlay if it's open (and stays on this page), else goes to the previous item.
@@ -657,8 +671,8 @@ local function build()
     GameTooltip:Show()
   end)
   plus:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  panel:SetScript("OnHide", function() overlayChanged(false) end)
-  win:HookScript("OnHide", function() if panel:IsShown() then M.SetDropsOverlay(false) end end)
+  panel:SetScript("OnHide", overlayHidden)
+  win:HookScript("OnHide", function() if panel:IsShown() then panel:Hide() end end)   -- its OnHide defers the swap
 
   -- Footer
   rule(-Y.footRule, 0.2)
