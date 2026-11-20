@@ -101,6 +101,59 @@ stepBtn.scripts.OnClick(stepBtn)
 M.check(st.id == stepId and stepId ~= 2840, "clicking a strip step opens that item")
 RM.GoBack()
 
+-- The strip comes from recipe data only, never from the breadcrumb (UI Bot, render of 0be3b11).
+local function linked(steps)   -- each step is made from the one before it
+  for i = 2, #steps do
+    local ok = false
+    for _, r in ipairs(RM.byReagent[steps[i - 1].id] or {}) do if r.product == steps[i].id then ok = true end end
+    if not ok then return false end
+  end
+  return true
+end
+local function has2840(steps) for _, x in ipairs(steps) do if x.id == 2840 then return true end end return false end
+RM.Navigate(2589, true)    -- Linen Cloth, opened from Copper Bar
+local ls = RM.ChainSteps(2589, nil)
+M.check(st.history[#st.history] == 2840 and ls[1].id == 2589 and ls[1].sub == "start here" and ls[1].current and #ls >= 2 and linked(ls) and not has2840(ls),
+  "Linen Cloth from Copper Bar: 'Linen Cloth (start here) > ...', not the previous page")
+M.check(W.chain[1].id == 2589 and W.chain[1].cur:IsShown(), "the window's strip starts on Linen Cloth too")
+W.rows[1].scripts.OnEnter(W.rows[1])
+local hs = RM.ChainSteps(2589, st.selected)
+M.check(hs[1].id == 2589 and hs[2].id == st.selected.r.product and linked(hs) and not has2840(hs) and #hs <= 3, "pointing at a row: Linen Cloth > that row > its best next step")
+RM.Navigate(2840, true); RM.Navigate(2996, true)    -- Bolt of Linen Cloth, opened from Copper Bar
+W.modeBtn.scripts.OnClick(W.modeBtn)
+M.check(st.mode == "made", "Made from mode")
+local ms = RM.ChainSteps(2996, nil)
+M.check(#ms == 2 and ms[1].id == 2589 and ms[1].sub == "reagent" and ms[2].id == 2996 and ms[2].current and ms[2].sub:find("Tailoring", 1, true) and not has2840(ms),
+  "Made from: the recipe's reagent first (Linen Cloth > Bolt of Linen Cloth), not the previous page")
+W.rows[1].scripts.OnEnter(W.rows[1])
+local mh = RM.ChainSteps(2996, st.selected)
+M.check(mh[1].id == st.selected.r.reagents[1].id and mh[#mh].id == 2996 and not has2840(mh), "Made from, pointing at a recipe: its first reagent > this item")
+M.check(W.chainLabel:GetText() == "Where the selected recipe's reagent comes in:", "Made from strip label")
+RM.Navigate(2840, true)
+
+-- Header: "Not crafted" instead of "Made by 0".
+local _, linenCounts = RM.HeaderText(2589)
+M.check(linenCounts:find("Not crafted", 1, true) and not linenCounts:find("Made by", 1, true), "nothing makes it: 'Not crafted', never 'Made by 0'")
+local _, barCounts = RM.HeaderText(2840)
+M.check(barCounts:find("Made by |cffffffff1|r (Mining)", 1, true), "Copper Bar: 'Made by 1 (Mining)'")
+
+-- Scrollbar only when the list doesn't fit.
+M.check(#st.list > RM.LAYOUT.rows and W.scroll.shown, "long list: scrollbar shown")
+RM.SetFilter("filterKnown", true)
+M.check(#st.list <= RM.LAYOUT.rows and not W.scroll.shown, "everything fits: scrollbar hidden")
+RM.SetFilter("filterKnown", false)
+
+-- Text size: every font object is 12 pt or larger (GameFontNormal/Highlight/Disable are FRIZQT 12 in Forever's
+-- FontStyles.xml; Large/Huge are bigger), including both footer lines.
+local ui = io.open("UI.lua"):read("*a")
+local okFonts = { GameFontNormal = true, GameFontHighlight = true, GameFontDisable = true, GameFontNormalLarge = true,
+  GameFontHighlightLarge = true, GameFontNormalHuge = true }
+local badFont
+for f in ui:gmatch('"(GameFont%w+)"') do if not okFonts[f] then badFont = f end end
+M.check(badFont == nil and not ui:find("SetFont%("), "no font object under 12 pt (" .. tostring(badFont) .. ")")
+M.check(ui:find('local key = fontString(win, "GameFontHighlight"', 1, true) and ui:find('win.foot = fontString(win, "GameFontDisable"', 1, true),
+  "footer colour key and price note use 12 pt font objects")
+
 -- Recipe name colours: difficulty colour, or white with no skill data (never gold).
 local seenWhite, wrong = false, false
 for _, row in ipairs(W.rows) do rawset(row.name, "SetTextColor", function(fs, r, g, b) fs.rgb = { r, g, b } end) end
@@ -130,8 +183,8 @@ M.check(st.selected == second and st.id == 2840, "clicking a row switches the ch
 RM.ClickRow(second)
 M.check(st.id == second.r.product and st.history[#st.history] == 2840, "clicking the selected row opens its item")
 local steps2 = RM.ChainSteps(st.id, st.selected)
-M.check(steps2[1].id == 2840 and steps2[1].sub == "start here" and steps2[2].current, "came from Copper Bar: it starts the chain")
-M.check(steps2[2].sub ~= "start here" and steps2[2].sub ~= "", "...and the current step says how it's made from it (" .. tostring(steps2[2].sub) .. ")")
+M.check(steps2[1].id == st.id and steps2[1].sub == "start here" and steps2[1].current and steps2[1].id ~= 2840,
+  "came from Copper Bar: the strip still starts on this item, not the previous page")
 M.check(#steps2 <= RM.LAYOUT.chainSteps, "chain capped at " .. RM.LAYOUT.chainSteps .. " steps")
 RM.GoBack()
 M.check(st.id == 2840, "Back returns (click mode)")
@@ -223,8 +276,8 @@ M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", 8613); M.fire("LOOT_OPENE
 M.check(db.dropKills[299] == kills, "a loot window right after your Skinning cast is ignored")
 M.advance(10); M.fire("LOOT_OPENED", false, false)
 M.check(db.dropKills[299] == kills, "...and that corpse can't be counted later")
-M.check(ns.Data.lootCasts[8613] == "gather" and ns.Data.lootCasts[2575] == "gather" and ns.Data.lootCasts[2366] == "gather"
-  and ns.Data.lootCasts[3365] == "gather" and ns.Data.lootCasts[921] == "pickpocket", "loot casts from DB2: Skinning, Mining, Herb Gathering, Opening, Pick Pocket")
+M.check(ns.Data.lootCasts[8613] == "skin" and ns.Data.lootCasts[2575] == "open" and ns.Data.lootCasts[2366] == "open"
+  and ns.Data.lootCasts[3365] == "open" and ns.Data.lootCasts[921] == "pickpocket", "loot casts from DB2: Skinning (95), Mining / Herb Gathering / Opening (33), Pick Pocket (71)")
 M.check(ns.Data.lootCasts[75] == nil and ns.Data.lootCasts[5019] == nil and ns.Data.lootCasts[133] == nil, "Auto Shot, Shoot, Fireball aren't loot casts")
 -- Combat casts (Auto Shot, Shoot, Fireball) right before looting don't skip or retire the corpse.
 local shot = ("Creature-0-4372-0-1-299-%010X"):format(9210)
@@ -248,6 +301,31 @@ M.fire("LOOT_OPENED", false, false)
 M.check(db.dropKills[299] == kills, "hidden item: window skipped")
 M.secret[hl] = nil; corpse(half, { 2589 }); M.fire("LOOT_OPENED", false, false)
 M.check(db.dropKills[299] == kills, "...and the reopened, half-looted corpse isn't counted either")
+-- Only creature corpses are retired; with no GetLootSourceInfo, an Opening-type cast (a chest, a node) doesn't retire
+-- your dead target, but a skinning-type cast does.
+local chest = ("GameObject-0-4372-0-1-1617-%010X"):format(7)
+corpse(chest, { 2589 }); M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-7", 3365); M.fire("LOOT_OPENED", false, false)
+local chestRetired = false
+for _, g in ipairs(db.dropDone) do if g == chest then chestRetired = true end end
+M.check(not chestRetired, "a chest's GUID is never put on the done list")
+M.advance(10)
+GetLootSourceInfo = nil
+local deadMob = ("Creature-0-4372-0-1-299-%010X"):format(9250)
+targetGUID, targetDead = deadMob, true
+corpse(deadMob, { 2589 })
+M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-8", 3365); M.fire("LOOT_OPENED", false, false)   -- opening a chest next to it
+M.check(db.dropKills[299] == kills, "Opening cast: that window is skipped...")
+M.advance(10); M.fire("LOOT_OPENED", false, false)
+M.check(db.dropKills[299] == kills + 1, "...but your dead target's own loot still counts afterwards")
+kills = kills + 1
+local skinMob = ("Creature-0-4372-0-1-299-%010X"):format(9251)
+targetGUID = skinMob; corpse(skinMob, { 2318 })
+M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-9", 8613); M.fire("LOOT_OPENED", false, false)
+M.advance(10); M.fire("LOOT_OPENED", false, false)
+M.check(db.dropKills[299] == kills, "Skinning cast: the dead target is retired (its later window isn't counted)")
+targetGUID, targetDead = nil, false
+GetLootSourceInfo = function(i) return unpack(loot[i].sources) end
+
 -- Casts are registered for the player only, and a hidden spell ID is ignored.
 M.fire("UNIT_SPELLCAST_SUCCEEDED", "party1", "Cast-2", 8613); M.advance(0.1)
 local sp = {}; M.secret[sp] = true; M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-6", sp)
@@ -312,11 +390,33 @@ M.check(Wd.dropsTitle:GetText() == title, "window shows the Drops from line")
 local histBefore = #st.history
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
 M.check(RM.DropsOverlayShown() and Wd.dropsPanel.lines[1]:GetText():find("Timber Wolf", 1, true), "+ opens the drops list")
+M.check(Wd.dropsPanel.title:GetText() == title, "overlay header row: 'Drops from (your N kills)'")
+M.check(not Wd.scroll.shown, "the recipe list's scrollbar is hidden under the overlay")
+Wd.dropsPanel.close.scripts.OnClick(Wd.dropsPanel.close)
+M.check(not RM.DropsOverlayShown(), "the (-) in the overlay's header closes it")
+Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
 M.check(not RM.DropsOverlayShown(), "- in the same spot closes it")
+-- Escape = Blizzard's CloseSpecialWindows over UISpecialFrames (no keyboard handler of ours).
+local function escape()
+  local names = {}
+  for i, n in ipairs(UISpecialFrames) do names[i] = n end
+  for _, n in ipairs(names) do local f = _G[n]; if f and f.shown then f.shown = false; if f.scripts.OnHide then f.scripts.OnHide(f) end end end
+end
+local function special(n) for _, x in ipairs(UISpecialFrames) do if x == n then return true end end return false end
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
-Wd.dropsPanel.scripts.OnKeyDown(Wd.dropsPanel, "ESCAPE")
-M.check(not RM.DropsOverlayShown(), "Escape closes it")
+M.check(special("KennyDwarfExplorersBibleDrops") and not special("KennyDwarfExplorersBibleFrame"), "overlay open: it, not the window, answers Escape")
+escape()
+M.check(not RM.DropsOverlayShown() and Wd.shown and special("KennyDwarfExplorersBibleFrame") and not special("KennyDwarfExplorersBibleDrops"),
+  "Escape closes the overlay only; the window stays and answers the next Escape")
+M.check(not Wd.scroll.shown == not (#st.list > RM.LAYOUT.rows), "scrollbar back (if the list needs it) after Escape")
+M.combat = true
+Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle); escape()
+M.check(not RM.DropsOverlayShown() and Wd.shown, "in combat too (nothing restricted is called)")
+M.combat = false
+local uiSrc = io.open("UI.lua"):read("*a")
+M.check(not uiSrc:find("OnKeyDown", 1, true) and not uiSrc:find("EnableKeyboard", 1, true) and not uiSrc:find("SetPropagateKeyboardInput", 1, true),
+  "the window never takes the keyboard, so it can't swallow keybinds")
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
 Wd.back.scripts.OnClick(Wd.back)
 M.check(not RM.DropsOverlayShown() and st.id == 2589 and #st.history == histBefore, "Back closes it and stays on the page")
@@ -329,4 +429,11 @@ for _, f in ipairs({ "Drops.lua", "UI.lua", "DwarfExplorersBible.lua" }) do
     M.check(not src:find(bad), f .. " never calls " .. bad)
   end
 end
+-- Overlay with more mobs than fit: no scrollbar, the last line says how many more.
+for cid = 5000, 5019 do db.drops[cid] = { [2934] = { loots = 20, seen = 5 } } end
+RM.Navigate(2934, true); RM.SetDropsOverlay(true)
+local P, fitN = RM.Frame().dropsPanel, RM.DropsLines()
+M.check(#P.lines == fitN and fitN < 20 and P.lines[fitN].shown and P.lines[fitN]:GetText():find("+" .. (20 - fitN + 1) .. " more mobs", 1, true),
+  "overlay: " .. fitN .. " lines fit, the last says how many more")
+RM.SetDropsOverlay(false)
 M.done("UI and drops")

@@ -17,6 +17,7 @@ local LAYOUT = {
   searchW = 210, popupW = 300, popupRows = 8,
   chainSteps = 4, chainStepMaxW = 150,
   hoverAlpha = 0.08,                     -- keeps grey (808080) text at 4.5:1 or better on the row stripe
+  dropsHeadH = 30, dropsLineH = 20,      -- Drops overlay: header row, then one line per mob
 }
 M.LAYOUT = LAYOUT
 local DIFF = { orange = { 1, 0.5, 0.25 }, yellow = { 1, 1, 0 }, green = { 0.25, 0.75, 0.25 }, grey = { 0.5, 0.5, 0.5 } }
@@ -31,6 +32,11 @@ function M.LayoutY()
   local dropsTop = chainTop + 18 + L.chainH + 10         -- the rule above "Drops from"
   return { chainTop = chainTop, chainLabel = chainTop + 1, chainSteps = chainTop + 18, dropsTop = dropsTop,
     dropsLine = dropsTop + 4, footRule = L.height - 44, footKey = L.height - 40, footNote = L.height - 24 }
+end
+-- Mob lines that fit in the Drops overlay under its header (it covers the recipe rows; no scrollbar).
+function M.DropsLines()
+  local L = LAYOUT
+  return math.floor((L.rows * L.rowH + 4 - L.dropsHeadH - 8 - 4) / L.dropsLineH)
 end
 local READY = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t"
 
@@ -60,8 +66,8 @@ function M.HeaderText(id)
   if #uses > 0 or #made > 0 then
     local profs, seen = {}, {}
     for _, r in ipairs(made) do if not seen[r.prof] then seen[r.prof] = true; profs[#profs + 1] = r.prof end end
-    parts[#parts + 1] = ("Used in |cffffffff%d|r recipe%s  ·  Made by |cffffffff%d|r%s"):format(#uses, #uses == 1 and "" or "s",
-      #made, #profs > 0 and (" (" .. table.concat(profs, ", ") .. ")") or "")
+    local madeBy = #made > 0 and ("Made by |cffffffff%d|r (%s)"):format(#made, table.concat(profs, ", ")) or "Not crafted"
+    parts[#parts + 1] = ("Used in |cffffffff%d|r recipe%s  ·  %s"):format(#uses, #uses == 1 and "" or "s", madeBy)
   end
   local camp = {}
   for _, c in ipairs(M.CampUses(id) or {}) do camp[#camp + 1] = M.CampText(c) end
@@ -90,42 +96,33 @@ function M.RowText(e)
   return name, money, table.concat(parts, ", "), right, d
 end
 
--- The chain strip: where you came from, this item, the selected row, and that row's most profitable next step.
--- Each step is { id, sub, current }.
+-- The chain strip, built from recipe data only (never from the pages you came through). Each step is { id, sub, current }.
+-- Used in: this item (start here) > the row's product > that product's most profitable next step. Before you point at
+-- a row: this item's own chain, its most profitable use at each step.
+-- Made from: the row's first reagent > this item (made by the row's profession); before a row, its first recipe.
 function M.ChainSteps(id, e)
   local steps = {}
   if not id then return steps end
-  local prev = state.history[#state.history]
-  if prev then steps[#steps + 1] = { id = prev, sub = "start here" } end
-  local how = (not prev) and "start here" or nil
-  if prev then
-    for _, r in ipairs(M.byProduct[id] or {}) do
-      for _, g in ipairs(r.reagents) do if g.id == prev and not how then how = profSkill(r) end end
+  if state.mode == "uses" then
+    steps[1] = { id = id, sub = "start here", current = true }
+    local cur, seen, maxN = id, { [id] = true }, LAYOUT.chainSteps
+    if e then
+      steps[2] = { id = e.r.product, sub = profSkill(e.r) }
+      seen[e.r.product], cur, maxN = true, e.r.product, 3
     end
-    if not how and M.byProduct[id] and M.byProduct[id][1] then how = profSkill(M.byProduct[id][1]) end
-  end
-  steps[#steps + 1] = { id = id, sub = how or "", current = true }
-  if not e and state.mode == "uses" then
-    -- Before you point at a row: this item's own chain, its most profitable use at each step.
-    local cur, seen = id, { [id] = true }
-    while #steps < LAYOUT.chainSteps + 1 do
+    while #steps < maxN do
       local nxt = M.BestNext(cur)
       if not nxt or seen[nxt.r.product] then break end
       steps[#steps + 1] = { id = nxt.r.product, sub = profSkill(nxt.r) }
-      seen[nxt.r.product] = true; cur = nxt.r.product
+      seen[nxt.r.product], cur = true, nxt.r.product
     end
-  elseif e and state.mode == "uses" then
-    steps[#steps + 1] = { id = e.r.product, sub = profSkill(e.r) }
-    local nxt = M.BestNext(e.r.product)
-    if nxt then steps[#steps + 1] = { id = nxt.r.product, sub = profSkill(nxt.r) } end
-  elseif e then
-    -- "Made from" mode: the row is a recipe that makes this item; show its first reagent before it.
-    local g = e.r.reagents[1]
-    if g then table.insert(steps, #steps, { id = g.id, sub = "reagent" }) end
+  else
+    local r = e and e.r or (M.byProduct[id] or {})[1]
+    local g = r and r.reagents[1]
+    if g then steps[1] = { id = g.id, sub = "reagent" } end
+    steps[#steps + 1] = { id = id, sub = r and profSkill(r) or "", current = true }
   end
-  while #steps > LAYOUT.chainSteps do
-    if steps[1].current then table.remove(steps) else table.remove(steps, 1) end
-  end
+  while #steps > LAYOUT.chainSteps do table.remove(steps) end
   return steps
 end
 
@@ -198,6 +195,8 @@ local function refreshRows()
     FauxScrollFrame_Update(win.scroll, #state.list, n, LAYOUT.rowH)
     state.offset = FauxScrollFrame_GetOffset(win.scroll)
   end
+  -- The scrollbar only when the list doesn't fit (FauxScrollFrame_Update does this too), and never under the overlay.
+  if win.scroll then win.scroll:SetShown(#state.list > n and not win.dropsPanel:IsShown()) end
   state.offset = math.max(0, math.min(state.offset, math.max(0, #state.list - n)))
   for i = 1, n do
     local row, e = win.rows[i], state.list[i + state.offset]
@@ -229,7 +228,7 @@ local function refreshChain()
   local steps = M.ChainSteps(state.id, state.selected)
   local avail = LAYOUT.width - 28
   local ws, total = chainWidths(steps)
-  if total > avail and #steps > 3 and not steps[1].current then table.remove(steps, 1); ws, total = chainWidths(steps) end
+  if total > avail and #steps > 3 then table.remove(steps); ws, total = chainWidths(steps) end   -- drop the deepest step first
   if total > avail then
     local scale = (avail - 20 * (#steps - 1)) / (total - 20 * (#steps - 1))
     for i = 1, #ws do ws[i] = math.max(60, math.floor(ws[i] * scale)) end
@@ -261,11 +260,17 @@ local function refreshDrops()
   local p = win.dropsPanel
   if p:IsShown() then
     local Dr = ns.Drops
-    for i = 1, #p.lines do
+    p.title:SetText(title)
+    -- Every mob that fits; if there are more, the last line says how many (no scrollbar in the overlay).
+    local fit = #p.lines
+    local shown = #rows > fit and fit - 1 or #rows
+    for i = 1, fit do
       local e = rows[i]
-      if e then
+      if i <= shown then
         p.lines[i]:SetText(("%s:  |cffffffff%d%%|r  |cffaaaaaa(%s)|r"):format(Dr.MobName(e.cid), Dr.Percent({ seen = e.seen, loots = e.loots }), Dr.Label(e.loots)))
         p.lines[i]:Show()
+      elseif i == shown + 1 and #rows > fit then
+        p.lines[i]:SetText(("|cffaaaaaa+%d more mobs|r"):format(#rows - shown)); p.lines[i]:Show()
       else p.lines[i]:Hide() end
     end
     p.empty:SetShown(#rows == 0)
@@ -371,16 +376,30 @@ end
 
 -- The Drops overlay over the recipe rows. The +/- button, Escape and Back close it.
 function M.DropsOverlayShown() return win ~= nil and win.dropsPanel:IsShown() == true end
-function M.SetDropsOverlay(on)
-  if not win then return end
-  local p = win.dropsPanel
-  p:SetShown(on and true or false)
+-- Escape, without ever taking the keyboard (no key handler, so no keybind can be swallowed, in or out of combat):
+-- while the overlay is open it, not the window, is the one in UISpecialFrames, so Escape (CloseSpecialWindows)
+-- closes just the overlay; once it's closed the window is back in the list.
+local WIN_NAME, DROPS_NAME = "KennyDwarfExplorersBibleFrame", "KennyDwarfExplorersBibleDrops"
+local function special(name, on)
+  if type(UISpecialFrames) ~= "table" then return end
+  for i = #UISpecialFrames, 1, -1 do if UISpecialFrames[i] == name then table.remove(UISpecialFrames, i) end end
+  if on then tinsert(UISpecialFrames, name) end
+end
+M.Special = special
+
+local function overlayChanged(on)
+  special(DROPS_NAME, on); special(WIN_NAME, not on)
   win.dropsToggle:SetNormalTexture(on and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
   win.dropsToggle:SetPushedTexture(on and "Interface\\Buttons\\UI-MinusButton-Down" or "Interface\\Buttons\\UI-PlusButton-Down")
-  -- Escape: take the keyboard only while the overlay is open and only out of combat (the propagate call is
-  -- restricted in combat; there Escape closes the whole window, which hides the overlay too).
-  if p.EnableKeyboard then p:EnableKeyboard(on and not C.InCombat() or false) end
   if on then refreshDrops() end
+  refreshRows()   -- hides the list's scrollbar under the overlay, brings it back after
+end
+M.OverlayChanged = overlayChanged
+
+function M.SetDropsOverlay(on)
+  if not win then return end
+  win.dropsPanel:SetShown(on and true or false)
+  overlayChanged(on and true or false)   -- the panel's OnHide calls it too (Escape hides the panel directly)
 end
 
 -- Back: closes the Drops overlay if it's open (and stays on this page), else goes to the previous item.
@@ -610,14 +629,25 @@ local function build()
   win.dropsText = fontString(win, "GameFontDisable", 0, 0, "LEFT")
   win.dropsText:ClearAllPoints(); win.dropsText:SetPoint("LEFT", win.dropsTitle, "RIGHT", 10, 0)
   win.dropsText:SetJustifyH("LEFT"); win.dropsText:SetWordWrap(false)
-  local panel = CreateFrame("Frame", nil, win, "BackdropTemplate")
+  local panel = CreateFrame("Frame", "KennyDwarfExplorersBibleDrops", win, "BackdropTemplate")
   panel:SetPoint("TOPLEFT", 12, -(top - 2)); panel:SetSize(rowW, RH * LAYOUT.rows + 4)
   panel:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" }); panel:SetBackdropColor(0.04, 0.03, 0.015, 1)
   panel:SetFrameLevel((win:GetFrameLevel() or 0) + 10)
   panel:Hide()
+  -- Header row: the (-) close and "Drops from (your N kills)"; the mobs below it, as many as fit.
+  local pclose = CreateFrame("Button", nil, panel)
+  pclose:SetSize(16, 16); pclose:SetPoint("TOPLEFT", 8, -7)
+  pclose:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up"); pclose:SetPushedTexture("Interface\\Buttons\\UI-MinusButton-Down")
+  pclose:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+  pclose:SetScript("OnClick", function() M.SetDropsOverlay(false) end)
+  panel.close = pclose
+  panel.title = fontString(panel, "GameFontNormal", 30, -9)
+  local hr = panel:CreateTexture(nil, "ARTWORK")
+  hr:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35); hr:SetHeight(1)
+  hr:SetPoint("TOPLEFT", 6, -LAYOUT.dropsHeadH); hr:SetPoint("TOPRIGHT", -6, -LAYOUT.dropsHeadH)
   panel.lines = {}
-  for i = 1, 16 do panel.lines[i] = fontString(panel, "GameFontHighlight", 12, -8 - (i - 1) * 20) end
-  panel.empty = fontString(panel, "GameFontDisable", 12, -8)
+  for i = 1, M.DropsLines() do panel.lines[i] = fontString(panel, "GameFontHighlight", 12, -(LAYOUT.dropsHeadH + 8) - (i - 1) * 20) end
+  panel.empty = fontString(panel, "GameFontDisable", 12, -(LAYOUT.dropsHeadH + 8))
   win.dropsPanel = panel
   win.dropsToggle = plus
   plus:SetScript("OnClick", function() M.SetDropsOverlay(not panel:IsShown()) end)
@@ -627,12 +657,7 @@ local function build()
     GameTooltip:Show()
   end)
   plus:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  panel:SetScript("OnKeyDown", function(p, key)
-    if key == "ESCAPE" then
-      if p.SetPropagateKeyboardInput then p:SetPropagateKeyboardInput(false) end
-      M.SetDropsOverlay(false)
-    elseif p.SetPropagateKeyboardInput then p:SetPropagateKeyboardInput(true) end
-  end)
+  panel:SetScript("OnHide", function() overlayChanged(false) end)
   win:HookScript("OnHide", function() if panel:IsShown() then M.SetDropsOverlay(false) end end)
 
   -- Footer

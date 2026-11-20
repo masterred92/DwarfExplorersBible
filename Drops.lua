@@ -16,7 +16,8 @@ local TRADE_GOODS = Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods or 7
 local SLOT_ITEM = Enum and Enum.LootSlotType and Enum.LootSlotType.Item or 1
 
 local db
-local lastCast = nil    -- { at = C.Clock(), kind = "gather" | "pickpocket" }, from your own UNIT_SPELLCAST_SUCCEEDED
+local lastCast = nil    -- { at = C.Clock(), kind = "skin" | "open" | "pickpocket" }, from your own UNIT_SPELLCAST_SUCCEEDED
+local fromTarget = false   -- the last window read fell back to your dead target (no GetLootSourceInfo answer)
 
 -- Saved data: drops[creatureID][itemID] = { loots = kills counted, seen = kills it dropped in }; kills[creatureID] =
 -- corpses counted; names[creatureID] = mob name (learned from your target or the mob tooltip); done = recent GUIDs.
@@ -70,6 +71,7 @@ local function slotSources(slot)
     if #out > 0 then return out end
   end
   -- Client without GetLootSourceInfo (or no answer): the dead mob you're targeting.
+  fromTarget = true
   local dead = UnitIsDead and C.Safe(UnitIsDead("target"))
   local guid = UnitGUID and UnitGUID("target")
   if C.IsSecret(guid) then return false end
@@ -82,6 +84,7 @@ end
 -- including ones with no trade goods), or nil and why it was skipped.
 function L.ReadWindow()
   if not (GetNumLootItems and GetLootSlotInfo and GetLootSlotLink) then return nil, "no loot API" end
+  fromTarget = false
   local n = GetNumLootItems()
   if C.IsSecret(n) then return nil, "hidden" end
   n = C.SafeNumber(n)
@@ -114,7 +117,9 @@ function L.ReadWindow()
 end
 
 -- Every corpse GUID in the open window that the client lets us read (used to retire a window we had to skip).
-function L.ReadableCorpses()
+-- The dead-target fallback is used only when the client can't name the window's sources, and not right after an
+-- Opening-type cast (that window is a chest or a node; the target's corpse is still unlooted).
+function L.ReadableCorpses(recent)
   local out = {}
   local n = GetNumLootItems and C.SafeNumber(GetNumLootItems()) or 0
   if GetLootSourceInfo then
@@ -126,13 +131,18 @@ function L.ReadableCorpses()
       end
     end
   end
-  local guid = UnitGUID and str(UnitGUID("target"))
-  if guid and UnitIsDead and C.Safe(UnitIsDead("target")) == true and L.CreatureID(guid) then out[guid] = true end
+  if next(out) == nil and recent ~= "open" then
+    local guid = UnitGUID and str(UnitGUID("target"))
+    if guid and UnitIsDead and C.Safe(UnitIsDead("target")) == true and L.CreatureID(guid) then out[guid] = true end
+  end
   return out
 end
 
+-- Marks corpses done without counting them. Only creature GUIDs (never chests or players).
 local function retire(guids)
-  for guid in pairs(guids) do if not isDone(guid) then markDone(guid) end end
+  for guid in pairs(guids) do
+    if L.CreatureID(guid) and not isDone(guid) then markDone(guid) end
+  end
 end
 
 -- Counts each creature corpse once. A newly seen item starts at the mob's kill count: those earlier corpses were
@@ -179,13 +189,15 @@ function L.OnLootOpened(isFromItem)
   if recent == "pickpocket" then return 0, "pick pocket" end
   local corpses, why = L.ReadWindow()
   if not corpses then
-    if why ~= "empty" and why ~= "no loot API" then retire(L.ReadableCorpses()) end
+    if why ~= "empty" and why ~= "no loot API" then retire(L.ReadableCorpses(recent)) end
     return 0, why
   end
-  if recent == "gather" then
-    -- Skinning (or herbs / ore from a corpse) right after your cast: not the kill's loot. Retire the corpse so a
-    -- reopened, half-emptied window can't be counted later either.
-    retire(corpses)
+  if recent == "skin" or recent == "open" then
+    -- Skinning (or herbs / ore from a corpse) or an Opening-type cast right after your cast: not the kill's loot.
+    -- Retire the corpses the window names, so a reopened, half-emptied window can't be counted later. When the
+    -- corpse is only your dead target (no source info), retire it only after a skinning-type cast: after Opening the
+    -- window is a chest or node and the target's own loot is still to come.
+    if not fromTarget or recent == "skin" then retire(corpses) end
     return 0, "gathering"
   end
   learnTargetName(corpses)
