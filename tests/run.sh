@@ -4,7 +4,8 @@
 # Any failure stops the script with a non-zero exit code (so CI goes red).
 set -e
 cd "$(dirname "$0")/.."
-[ -d /workspace/lua51/bin ] && PATH=/workspace/lua51/bin:$PATH
+# Optional Lua 5.1 bindir: export LUA51_BIN=<path to lua 5.1 bindir>. Otherwise lua and luacheck must already be on PATH.
+[ -n "${LUA51_BIN:-}" ] && [ -d "$LUA51_BIN" ] && PATH="$LUA51_BIN:$PATH"
 for f in *.lua; do luac -p "$f"; done
 echo "luac -p OK"
 luacheck . --formatter plain
