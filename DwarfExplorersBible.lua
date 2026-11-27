@@ -6,7 +6,7 @@ local M = {}
 ns.RM = M
 KennyDwarfExplorersBible = M
 
-local SCHEMA = 2
+local SCHEMA = 3
 -- filter* are the window's "Show only" boxes, remembered between sessions; only "My professions" starts ticked.
 local DEFAULTS = { sources = table.concat(P.DEFAULT_ORDER, ","), tooltip = true, altClick = true, ahCut = 0.05, chainDepth = 3,
   filterKnown = false, filterMine = true, filterPriced = false }
@@ -311,6 +311,8 @@ local migrations = {
   [1] = function(d) d.chars = d.chars or {}; d.extra = d.extra or {}; d.names = d.names or {}; d.cache = d.cache or {} end,
   -- 1.2.0: trade-goods drops learned from your own kills (see Drops.lua).
   [2] = function(d) d.drops = d.drops or {}; d.dropKills = d.dropKills or {}; d.mobNames = d.mobNames or {}; d.dropDone = d.dropDone or {} end,
+  -- Drop sharing: imported/synced snapshots, kept apart from your own kills (see DropShare.lua).
+  [3] = function(d) d.dropShares = d.dropShares or {} end,
 }
 
 function M.Init()
@@ -402,11 +404,15 @@ SlashCmdList.KENNYDWARFEXPLORERSBIBLE = function(msg)
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > "))
   elseif lc == "tooltip" then settings.tooltip = not settings.tooltip; Core.Print("tooltip line " .. (settings.tooltip and "on" or "off"))
   elseif lc == "altclick" then settings.altClick = not settings.altClick; Core.Print("alt-click " .. (settings.altClick and "on" or "off"))
+  elseif lc == "export" then
+    if ns.DropShare then ns.DropShare.OpenExport() end
+  elseif lc == "import" then
+    if ns.DropShare then ns.DropShare.OpenImport() end
   elseif lc == "report" then
     Core.ShowReport({ "schema " .. tostring(db.schema), "recipes " .. #M.recipes .. " (data " .. tostring(D.build) .. ")", "price sources: " .. table.concat(P.Installed(), ", "), "mobs with learned drops: " .. M.CountKeys(db.drops),
-      "order " .. settings.sources })
+      "shared drop sources: " .. M.CountKeys(db.dropShares), "order " .. settings.sources })
   elseif lc == "help" then
-    Core.Print("/deb [item, link or name] | sources | prefer <id> | order a,b,c | tooltip | altclick | report")
+    Core.Print("/deb [item, link or name] | sources | prefer <id> | order a,b,c | tooltip | altclick | export | import | report")
     Core.Print("source ids: pricelog, auctionator, tsm, auctioneer, scan")
   else
     local id = M.ParseItem(msg)

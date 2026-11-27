@@ -1,6 +1,6 @@
 -- The Guide window (1.2.0 layout, from UI Bot's approved mockup): search with live results, Back + breadcrumb,
 -- the picked material with its price, "Show only" filters, one row per recipe, the crafting chain strip, and the
--- mobs it drops from (learned from your own kills, Drops.lua).
+-- mobs it drops from (learned from corpses you loot, plus imported or synced counts; Drops.lua).
 -- LAYOUT.STRIP_MODE "hover" (default, Kenny Nov 20): one click opens a row; the strip follows the row you point at
 -- and stays on it after the mouse leaves. "click": the first click puts a row in the strip, a second click opens it.
 local _, ns = ...
@@ -126,8 +126,8 @@ function M.ChainSteps(id, e)
   return steps
 end
 
--- "Drops from (your N kills)" and a short summary for the collapsed line. N counts only the mobs listed (those with
--- a rate, MIN_LOOTS kills or more); with none listed yet the title is plain "Drops from".
+-- "Drops from (N kills)" and a short summary for the collapsed line. N counts only the mobs listed (those with
+-- a rate, MIN_LOOTS combined kills or more); with none listed yet the title is plain "Drops from".
 function M.DropsSummary(id)
   local Dr = ns.Drops
   if not (Dr and id) then return "Drops from", "", {} end
@@ -141,13 +141,13 @@ function M.DropsSummary(id)
     end
     summary = table.concat(bits, ",  ") .. (#s.rows > 2 and ("  +" .. (#s.rows - 2) .. " more") or "")
   elseif s.learning > 0 then
-    summary = ("Seen from %d mob%s; a rate shows after %d of your kills of one."):format(s.learning, s.learning == 1 and "" or "s", Dr.MIN_LOOTS)
+    summary = ("Seen from %d mob%s; a rate shows after %d kills of one."):format(s.learning, s.learning == 1 and "" or "s", Dr.MIN_LOOTS)
   else
     summary = "Not seen yet: learns from corpses you loot."
   end
   local shown = 0
   for _, e in ipairs(s.rows) do shown = shown + e.loots end
-  return shown > 0 and ("Drops from (your %d kills)"):format(shown) or "Drops from", summary, s.rows
+  return shown > 0 and ("Drops from (%d kills)"):format(shown) or "Drops from", summary, s.rows
 end
 
 -- Search popup rows: { id, name, right } for items with a word starting with text.
@@ -256,7 +256,8 @@ end
 local function refreshDrops()
   local title, summary, rows = M.DropsSummary(state.id)
   win.dropsTitle:SetText(title); win.dropsText:SetText(summary)
-  win.dropsText:SetWidth(LAYOUT.width - 36 - (win.dropsTitle:GetStringWidth() or 0) - 10 - 14)
+  local btnW = (win.exportBtn and 110 + 6 + 110 + 14) or 14
+  win.dropsText:SetWidth(math.max(40, LAYOUT.width - 36 - (win.dropsTitle:GetStringWidth() or 0) - 10 - btnW))
   local p = win.dropsPanel
   if p:IsShown() then
     local Dr = ns.Drops
@@ -632,7 +633,7 @@ local function build()
     win.arrows[i] = a
   end
 
-  -- Drops from (learned from your kills); the + opens the full list over the recipe rows.
+  -- Drops from (learned from looted corpses, plus imported or synced counts); the + opens the full list.
   local dy = Y.dropsLine
   rule(-Y.dropsTop)
   local plus = CreateFrame("Button", nil, win)
@@ -648,7 +649,7 @@ local function build()
   panel:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" }); panel:SetBackdropColor(0.04, 0.03, 0.015, 1)
   panel:SetFrameLevel((win:GetFrameLevel() or 0) + 10)
   panel:Hide()
-  -- Header row: the (-) close and "Drops from (your N kills)"; the mobs below it, as many as fit.
+  -- Header row: the (-) close and "Drops from (N kills)"; the mobs below it, as many as fit.
   local pclose = CreateFrame("Button", nil, panel)
   pclose:SetSize(16, 16); pclose:SetPoint("TOPLEFT", 8, -7)
   pclose:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up"); pclose:SetPushedTexture("Interface\\Buttons\\UI-MinusButton-Down")
@@ -671,6 +672,16 @@ local function build()
     GameTooltip:Show()
   end)
   plus:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  local function shareBtn(caption, right, fn)
+    local b = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+    b:SetSize(110, 20)
+    b:SetPoint("TOPRIGHT", right, -(dy + 1))
+    b:SetText(caption)
+    b:SetScript("OnClick", fn)
+    return b
+  end
+  win.importBtn = shareBtn("Import Drops", -14, function() if ns.DropShare then ns.DropShare.OpenImport() end end)
+  win.exportBtn = shareBtn("Export Drops", -130, function() if ns.DropShare then ns.DropShare.OpenExport() end end)
   panel:SetScript("OnHide", overlayHidden)
   win:HookScript("OnHide", function() if panel:IsShown() then panel:Hide() end end)   -- its OnHide defers the swap
 

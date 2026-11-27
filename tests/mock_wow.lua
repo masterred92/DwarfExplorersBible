@@ -4,7 +4,8 @@ local M = {}
 M.now, M.clock, M.combat, M.encounter, M.lockdown = 1790000000, 1000, false, false, false
 M.timers, M.frames, M.prints, M.sounds, M.chat = {}, {}, {}, {}, {}
 M.secret = {}
-M.group = { inGroup = false, inRaid = false, leader = false, assist = false }
+M.group = { inGroup = false, inRaid = false, leader = false, assist = false, guild = false }
+M.addonMessages, M.addonPrefixes, M.clipboard, M.sendResult = {}, {}, nil, 0
 
 local function frameObj(name)
   local fr = { events = {}, scripts = {}, shown = true, name = name, points = {}, kids = {} }
@@ -20,6 +21,10 @@ local function frameObj(name)
     if k == "SetShown" then return function(_, v) t.shown = v and true or false end end
     if k == "SetText" then return function(_, v) t.text_ = v end end
     if k == "GetText" then return function() return t.text_ end end
+    if k == "SetMaxLetters" then return function(_, n) t.maxLetters = n end end
+    if k == "GetMaxLetters" then return function() return t.maxLetters end end
+    if k == "HighlightText" then return function() t.highlighted = true end end
+    if k == "SetFocus" then return function() t.focused = true end end
     if k == "SetChecked" then return function(_, v) t.checked = v and true or false end end
     if k == "GetChecked" then return function() return t.checked end end
     if k == "GetName" then return function() return t.name end end
@@ -35,6 +40,7 @@ M.frameObj = frameObj
 
 function M.install(env)
   env = env or _G
+  M.addonMessages, M.addonPrefixes, M.clipboard, M.sendResult, M.throttle = {}, {}, nil, 0, false
   env.issecretvalue = function(v) return v ~= nil and M.secret[v] == true end
   env.time = function() return M.now end
   env.date = os.date
@@ -52,8 +58,29 @@ function M.install(env)
   env.UnitIsGroupLeader = function() return M.group.leader end
   env.UnitIsGroupAssistant = function() return M.group.assist end
   env.C_InstanceEncounter = { IsEncounterInProgress = function() return M.encounter end }
+  env.IsInGuild = function() return M.group.guild end
+  env.CopyToClipboard = function(s) M.clipboard = s; return type(s) == "string" and #s or 0 end
   env.C_ChatInfo = { InChatMessagingLockdown = function() return M.lockdown end,
-    SendChatMessage = function(msg, chatType) M.chat[#M.chat + 1] = { msg, chatType } end }
+    SendChatMessage = function(msg, chatType) M.chat[#M.chat + 1] = { msg, chatType } end,
+    RegisterAddonMessagePrefix = function(prefix)
+      if M.secret[prefix] then error("secret argument to RegisterAddonMessagePrefix") end
+      M.addonPrefixes[prefix] = true
+      return 0
+    end,
+    IsAddonMessagePrefixRegistered = function(prefix) return M.addonPrefixes[prefix] == true end,
+    SendAddonMessage = function(prefix, message, chatType, target)
+      -- SecretArguments = "NotAllowed": a secret value must not be passed.
+      for _, v in ipairs({ prefix, message, chatType, target }) do
+        if v ~= nil and M.secret[v] then error("secret argument to SendAddonMessage") end
+      end
+      if M.lockdown then return 11 end
+      if M.throttle then return 3 end
+      local r = M.sendResult or 0
+      if r == 0 then
+        M.addonMessages[#M.addonMessages + 1] = { prefix = prefix, message = message, chatType = chatType, target = target }
+      end
+      return r
+    end }
   env.C_FriendList = { IsFriend = function(guid) return M.friends and M.friends[guid] end,
     GetFriendInfo = function(name) return M.friends and M.friends[name] and { name = name } or nil end,
     IsOnIgnoredList = function(name) return M.ignored and M.ignored[name] or false end }

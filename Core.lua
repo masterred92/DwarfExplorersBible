@@ -133,9 +133,11 @@ function Core.BuildReport(stateLines)
   return text
 end
 
--- A movable, selectable text window (used for bug reports and CSV export).
+-- A movable, selectable text window (used for bug reports, CSV export, and drop import).
+-- opts is optional: actionLabel / action (text, window) add a left-hand button; noHighlight skips select-all.
 local windows = {}
-function Core.ShowText(key, title, text)
+function Core.ShowText(key, title, text, opts)
+  opts = opts or {}
   local w = windows[key]
   if not w then
     w = CreateFrame("Frame", "Kenny" .. ADDON .. key .. "Window", UIParent, "BackdropTemplate")
@@ -164,6 +166,7 @@ function Core.ShowText(key, title, text)
     edit:SetAutoFocus(false)
     edit:SetFontObject("ChatFontNormal")
     edit:SetWidth(500)
+    if edit.SetMaxLetters then edit:SetMaxLetters(0) end
     edit:SetScript("OnEscapePressed", function() w:Hide() end)
     scroll:SetScrollChild(edit)
     w.edit = edit
@@ -172,13 +175,28 @@ function Core.ShowText(key, title, text)
     close:SetPoint("BOTTOMRIGHT", -12, 10)
     close:SetText("Close")
     close:SetScript("OnClick", function() w:Hide() end)
+    w.close = close
+    local action = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+    action:SetSize(120, 22)
+    action:SetPoint("BOTTOMLEFT", 12, 10)
+    action:Hide()
+    w.action = action
     windows[key] = w
   end
+  if w.edit.SetMaxLetters then w.edit:SetMaxLetters(0) end
   w.title:SetText(title)
-  w.edit:SetText(text)
+  w.edit:SetText(text or "")
+  if opts.action then
+    w.action:SetText(opts.actionLabel or "OK")
+    w.action:Show()
+    w.action:SetScript("OnClick", function() opts.action(w.edit:GetText(), w) end)
+  else
+    w.action:SetScript("OnClick", nil)
+    w.action:Hide()
+  end
   w:Show()
   w.edit:SetFocus()
-  w.edit:HighlightText()
+  if not opts.noHighlight then w.edit:HighlightText() end
   return w
 end
 

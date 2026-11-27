@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Drop data can be shared. Export Drops and Import Drops (and `/deb export` / `/deb import`) copy or accept a drop string for Discord or a whisper. In a party, raid or guild, your own counts are also sent automatically to other Dwarf Explorer's Bible users, only out of combat, in short hidden addon messages. Rates from different people are added together and labelled "from N kills" (no longer "your" kills). A rate still shows after 20 kills of a mob, counting everyone you've imported or received from. Pasting the same string twice does not double the numbers: each export has an id, and a later import from that id replaces the earlier one. Only your own kills are exported or sent, never imported numbers, and never the list of corpse GUIDs used to skip a corpse you've already counted. Shared data stays in your SavedVariables; it is not added to the bundled recipe data.
+
 ## 1.2.0
 - New window, from UI Bot's approved mockup: 660x632 and opaque, Back with a clickable breadcrumb, a bigger header (icon, name, price and where it's from), recipe icons, profit on the right, and "not learned" or a tick next to each profession.
 - Search shows results as you type (up to 8, with how many recipes use each) and matches the start of words: "copp" finds Copper Bar and Handful of Copper Bolts, "opper" finds nothing. An exact name comes first.
