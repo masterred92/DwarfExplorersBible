@@ -65,12 +65,13 @@ M.fire("TRADE_SKILL_SHOW"); M.advance(1)
 M.check(not RM.Knows(found[2996].r), "linked profession windows are ignored")
 linked = false
 
--- Price sources: nothing installed -> scan cache only.
-M.check(RM.Price(2589) == nil, "no price yet")
+-- Price sources: bundled Forever baseline is last; a live scan beats it.
+local p, label, id = RM.Price(2589)
+M.check(p == 24 and id == "baseline" and label == "Forever baseline", "bundled baseline when nothing live is installed")
 C_AuctionHouse = { GetBrowseResults = function() return { { itemKey = { itemID = 2589 }, minPrice = 25, totalQuantity = 40 } } end }
 M.fire("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
-local p, label, id = RM.Price(2589)
-M.check(p == 25 and id == "scan" and label == "Dwarf Explorer's Bible scan", "scan cache from your own AH browse")
+p, label, id = RM.Price(2589)
+M.check(p == 25 and id == "scan" and label == "Dwarf Explorer's Bible scan", "scan cache from your own AH browse beats the baseline")
 C_AuctionHouse.GetNumCommoditySearchResults = function() return 1 end
 C_AuctionHouse.GetCommoditySearchResultInfo = function() return { unitPrice = 900, quantity = 3 } end
 M.fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2996)

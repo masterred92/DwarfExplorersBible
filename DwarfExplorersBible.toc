@@ -16,6 +16,7 @@ Core.lua
 Cache.lua
 Data.lua
 Zones.lua
+BaselinePrices.lua
 Prices.lua
 DwarfExplorersBible.lua
 Inventory.lua

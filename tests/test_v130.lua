@@ -104,10 +104,32 @@ M.check(#mats == 1 and mats[1].itemID == 2318 and mats[1].total == 7, "who has m
 M.check(#A.WhoHasMats("bankalt") >= 3, "who has mats, filtered by character name")
 
 -- 3. Baseline prices and the price resolver ---------------------------------------------------------------------
+local b = ns.BaselinePrices
+M.check(type(b) == "table" and b.market == "forever.normal.horde.us" and b.capturedAt == 1795815488,
+  "bundled BaselinePrices.lua: market forever.normal.horde.us, capturedAt 1795815488")
+local n, ok = 0, true
+for id, copper in pairs(b.prices) do
+  n = n + 1
+  if type(id) ~= "number" or id < 1 or id ~= math.floor(id) then ok = false end
+  if type(copper) ~= "number" or copper < 1 or copper ~= math.floor(copper) then ok = false end
+end
+M.check(n == 598 and ok, "598 positive integer itemIDs and copper prices")
+M.check(b.prices[2589] == 24 and b.prices[118] == 5 and b.prices[3858] == 1044, "known reagent copper values")
 M.check(#P.Order(RM.Settings().sources) == 6 and P.Order("baseline,pricelog")[6] == "baseline", "baseline is always the last source")
+-- PriceLog already has 2589 at 33c; a live source must beat the bundled 24c.
+local r = RM.Resolve(2589, "sell")
+M.check(r.price == 33 and r.source == "pricelog" and r.label == "PriceLog", "a live PriceLog price beats the bundled baseline")
+-- 4306 (Silk Cloth) is in the bundle (199c) and not in PriceLog; a scan still wins.
+P.cache[4306] = { p = 50, t = M.now - 10 }; bump()
+r = RM.Resolve(4306, "sell")
+M.check(r.price == 50 and r.source == "scan" and r.label == "Dwarf Explorer's Bible scan", "a live scan beats the bundled baseline")
+P.cache[4306] = nil; bump()
+r = RM.Resolve(3858, "sell")
+M.check(r.price == 1044 and r.source == "baseline" and r.label == "Forever baseline" and r.t == 1795815488,
+  "the bundled baseline fills in with its label and capture time")
 ns.BaselinePrices = { market = "test", capturedAt = M.now - 3600, prices = { [2589] = 99, [3858] = 500 } }
 bump()
-local r = RM.Resolve(2589, "sell")
+r = RM.Resolve(2589, "sell")
 M.check(r.price == 33 and r.source == "pricelog", "a live source beats the baseline")
 r = RM.Resolve(3858, "sell")
 M.check(r.price == 500 and r.label == "Forever baseline" and r.t == M.now - 3600 and r.ageSeconds == 3600,

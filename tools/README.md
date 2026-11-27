@@ -4,6 +4,8 @@
 - `gen_data.py <csv dir> --build <full build> [--hotfixes <dir>] [--hotfix-build <n>] [--vendor data.json]` - writes Data.lua.
 - `gen_zones.py <maps csv dir> <SpellName.csv> <build> [--out Zones.lua]` - writes Zones.lua (zone names, continents and
   centres from UiMap / UiMapAssignment; gathering spell ids from Data.lua's lootCasts and SpellName).
+- `gen_baseline_prices.py <snapshot.json> [--out BaselinePrices.lua]` - writes the bundled Forever auction baseline
+  (itemID -> copper, with market and capture time) from a snapshot such as `forever-prices-2026-11-27.json`.
 - `verify_api.py <wow-ui-source checkout> *.lua` - checks every API, event, template and font object we use exists in
   Blizzard's Forever UI source (run by `tests/run.sh <path>`). `host_api.py` lists client globals that aren't in it.
 

@@ -50,7 +50,11 @@ local onlyTailoring = #mine > 0
 for _, e in ipairs(mine) do if e.r.prof ~= "Tailoring" then onlyTailoring = false end end
 M.check(onlyTailoring and #mine < #all, "'My professions' keeps only your professions (" .. #mine .. " of " .. #all .. ")")
 M.check(#RM.FilterList(all, { filterKnown = true }) == 0, "'Known' with nothing learned hides everything")
-M.check(#RM.FilterList(all, { filterPriced = true }) == 0, "'Has a price' with no prices hides everything")
+M.check(#RM.FilterList(all, { filterPriced = true }) > 0, "'Has a price' keeps recipes the bundled baseline can fully price")
+local savedBaseline = ns.BaselinePrices
+ns.BaselinePrices = nil
+M.check(#RM.FilterList(RM.UsesOf(2589), { filterPriced = true }) == 0, "'Has a price' with no live prices and no baseline hides everything")
+ns.BaselinePrices = savedBaseline
 
 -- 3. Search matches the start of words ------------------------------------------------------
 local function has(list, id) for _, v in ipairs(list) do if v == id then return true end end return false end
@@ -193,9 +197,9 @@ r2.scripts.OnEnter(r2)
 M.check(st.selected ~= st.list[2], "click mode: pointing at a row doesn't move the strip")
 RM.LAYOUT.STRIP_MODE = "hover"
 M.check(RM.LAYOUT.width == 660 and RM.LAYOUT.height == 702 and RM.LAYOUT.bg[4] == 1, "660x702 (1.3.0: +30 tab bar, +40 callout card), opaque background")
-local name, counts, price = RM.HeaderText(268418)
+local name, counts, price, from = RM.HeaderText(268418)
 M.check(name == "Scarce Herb Seeds" and counts:find("Plant Seeds (1) at a Greenhouse", 1, true) and counts:find("hybridized", 1, true)
-  and price:find("no price yet", 1, true), "camp header: plant only, can't be hybridized, no price yet")
+  and price == "309c" and from == "each, from Forever baseline", "camp header: plant only, can't be hybridized, bundled baseline price")
 
 -- 5. Drop learner ---------------------------------------------------------------------------
 local WOLF = "Creature-0-4372-0-1-299-0000A1B2C3"

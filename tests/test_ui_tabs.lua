@@ -155,6 +155,7 @@ M.check(#card.pillBg.points == 2 and card.pillBg.points[1][2] == card.pill, "pil
 RM.Navigate(2589, true)
 M.check(txt(Wn.counts):find("You have 6 (6 bags, 0 bank)", 1, true), "header counts include bags and bank")
 M.check(txt(Wn.priceFrom) == "PriceLog 2h ago" and Wn.badgeBg.shown, "freshness badge: 'PriceLog 2h ago'")
+M.check(RM.FreshnessBadge(12359) == "Forever baseline (Nov 27)", "bundled baseline badge: 'Forever baseline (Nov 27)'")
 ns.BaselinePrices = { capturedAt = os.time({ year = 2026, month = 11, day = 7, hour = 12 }), prices = { [4306] = 900 } }
 M.check(RM.FreshnessBadge(4306) == "Forever baseline (Nov 7)", "baseline badge: 'Forever baseline (Nov 7)'")
 M.check(RM.FreshnessBadge(12359) == "", "no price: no badge")
