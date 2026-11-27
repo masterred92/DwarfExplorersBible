@@ -1,4 +1,4 @@
--- The Guide window (1.3.0 layout, from UI Bot's tabbed spec /workspace/wow-addons/deb-1.3.0-ui-spec.md): a title bar
+-- The Guide window (1.3.0 layout, from UI Bot's tabbed spec): a title bar
 -- with the search box, four tabs (Materials | Shopping | Seeds | Alts, Nav.lua), and one pane per tab. This file
 -- builds the window, the tab bar and the Materials pane: Back + breadcrumb, the picked material with its price and
 -- price-source badge, the fixed 38 px "Right Here / Nearest Spot" card, "Show only" filters (Make now) and the
@@ -120,7 +120,7 @@ function M.FreshnessBadge(id)
   local r = M.Resolve(id, "sell")
   if not r.price then return "" end
   if r.source == "baseline" then
-    if r.t then return ("Forever baseline (%s %d)"):format(date("%b", r.t), tonumber(date("%d", r.t))) end
+    if r.t then return ("Forever baseline (%s %d)"):format(date("!%b", r.t), tonumber(date("!%d", r.t))) end
     return "Forever baseline"
   end
   if r.ageSeconds then return ("%s %s ago"):format(r.label, M.Ago(r.ageSeconds)) end

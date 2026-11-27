@@ -1,7 +1,7 @@
 -- Seeds.lua: herb seeds, the Greenhouse and the Seed Hybridizer in your bags and bank, what each seed is for, and
 -- whether you're ready to plant. Seeds and camp actions come from the client data (Data.camp, Data.campOff); the
 -- crops come from GROWS below, which is REPORTED (Icy Veins), not datamined. It never plants or uses anything:
--- the UI shows a hint and can light up the bag slots (Inventory.BagSlots).
+-- the seed tooltip lists exact bag and slot locations via Inventory.BagSlots ("In your bags: bag N slot M").
 local _, ns = ...
 local C = ns.Compat
 local S = {}

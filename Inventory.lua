@@ -103,7 +103,7 @@ function I.Count(itemID)
   return out
 end
 
--- Bag slots holding itemID, for a bag highlight (the UI only lights them up; nothing is used for you).
+-- Bag slots holding itemID, so the seed tooltip can list exact locations ("In your bags: bag N slot M"); nothing is used for you.
 function I.BagSlots(itemID)
   local out = {}
   if not (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo) then return out end
