@@ -184,7 +184,7 @@ function S.OpenExport()
 end
 
 function S.OpenImport()
-  return Core.ShowText("DropImport", "Paste a drop string, then click Import", "", {
+  return Core.ShowText("DropImport", "Paste one or both lines (drops, then sightings), then click Import", "", {
     actionLabel = "Import",
     noHighlight = true,
     action = function(s, w)

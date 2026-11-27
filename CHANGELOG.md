@@ -13,7 +13,9 @@
 - Sharing: vendor and gathering sightings are shared with other Bible users in your party, raid or guild over a separate addon channel (`DEBDATA`), with the same limits as drop sharing. The 1.2.1 drop channel and format are unchanged. `/deb export` adds a second line with your sightings; `/deb import` takes either line or both.
 - Drop sharing: senders are matched by name and realm (realm spaces, hyphens and case ignored), so a player with the same name on another realm can't overwrite a source, and your own messages are recognised across realm name forms.
 - Optional "Forever baseline" price source, always last; any live source beats it.
-- Tooltips are one or two lines; hold Shift for price age, alt counts and the alt-click hint.
+- Tooltips are short: uses and the best one, what you have and the AH price, a vendor or farm line when it's near, and "Hold Shift for full crafting breakdown". Shift adds price age, alt counts, the top 5 uses, what it's made from and who can craft it, vendors you've seen and the nearest spot.
+- Window: four tabs under the title (the same as the slash commands). Materials gets a "Right here / Nearest spot / Vendor" card under the header, a "You have N (bags, bank)" line, a price-source badge, "+ Shop" on the header and on each row, red counts for mats you're short of, and a plain message when no recipe matches the filters. Shopping, Seeds and Alts each have their own list, buttons and empty message. Nothing is resized or moved in combat; anything that needs it waits until combat ends.
+- Export and Import explain the two lines (drops, then sightings).
 - Derived lists are cached and rebuilt only after a change (never in combat).
 
 ## 1.2.1

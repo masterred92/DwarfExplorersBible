@@ -30,4 +30,5 @@ Drops.lua
 DropShare.lua
 ShareData.lua
 UI.lua
+UITabs.lua
 Broker.lua

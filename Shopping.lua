@@ -183,13 +183,13 @@ function S.Sections(zone)
   return secs
 end
 
--- "Need 12 (have 4 bags, 2 bank → buy 6)" / "... → 6 from Bankalt"
+-- "Need 12 (have 4 bags, 2 bank): buy 6" / "...: 6 from Bankalt" (FRIZQT has no arrow glyph)
 function S.NeedText(row)
   local tail
   if row.buy > 0 then tail = "buy " .. row.buy
   elseif row.fromAlt > 0 then tail = row.fromAlt .. " from " .. (row.altHolders[1] and row.altHolders[1].name or "an alt")
   else tail = "have enough" end
-  return ("Need %d (have %d bags, %d bank → %s)"):format(row.need, row.bags, row.bank, tail)
+  return ("Need %d (have %d bags, %d bank): %s"):format(row.need, row.bags, row.bank, tail)
 end
 
 -- Banner line for the tab.

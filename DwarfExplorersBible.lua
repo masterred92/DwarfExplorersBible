@@ -306,13 +306,48 @@ function M.Settings() return settings end
 function M.DB() return db end
 
 -- Tooltip lines ----------------------------------------------------------------------------
--- Two short lines by default: what the item is for, then what you hold and what it's worth. Hold Shift for the
--- breakdown (alts holding it, price age, alt-click hint).
+-- Compact by default: line 1 what the item is for (and its best use), line 2 what you hold and what it's worth, then
+-- at most one vendor line and one "here" line (bright green when it's in your zone), and a quiet Shift hint. Hold
+-- Shift for the full breakdown: price age, alts holding it, best recipes, what it's made from, every remembered
+-- vendor, the nearest spot, which alts can craft it, and the alt-click hint.
 local function shiftDown() return IsShiftKeyDown ~= nil and IsShiftKeyDown() == true end
+local HERE = { 0.45, 1.0, 0.50 }
+local GOLDC = { 1, 0.82, 0 }
 
 function M.HaveText(have)
   if not have or have.mine <= 0 then return nil end
   return ("You have %d (%d bags, %d bank)"):format(have.mine, have.bags, have.bank)
+end
+
+-- The most profitable use, cached (it prices every recipe that uses the item).
+function M.BestUse(itemID)
+  local K = ns.Cache
+  local function build() return M.UsesOf(itemID)[1] or false end
+  local best = K and K.Get("bestuse." .. tostring(itemID), build) or build()
+  return best or nil
+end
+
+-- One vendor line: the remembered merchant in your zone first (green), else the nearest one (gold). Returns
+-- text, isHere, the full vendor list.
+function M.VendorTipLine(itemID)
+  local V = ns.Vendors
+  if not V then return nil, false, {} end
+  local list = V.GetVendorsForItem(itemID)
+  local v
+  for _, x in ipairs(list) do if not x.limited then v = x break end end
+  v = v or list[1]
+  if not v then return nil, false, list end
+  local where = v.subzone and (v.subzone .. ", " .. v.zone) or v.zone
+  return ("%s: %s (%s) — %s%s"):format(v.inZone and "Vendor here" or "Vendor", v.npc, where, C.Money(v.price), v.limited and " (limited stock)" or ""),
+    v.inZone == true and not v.limited, list
+end
+
+-- "Farm here: <zone> (<mob>, <rate>%)" / "Mine here: <zone>" when it's found in your zone, else nil (vendors have their own line).
+function M.HereTipLine(itemID)
+  local W = ns.Where
+  local t = W and W.TooltipText(itemID)
+  if t and t:find("^%a+ here: ") and not t:find("^Vendor here") then return t end
+  return nil
 end
 
 local function addLines(tooltip, itemID, expanded)
@@ -324,9 +359,13 @@ local function addLines(tooltip, itemID, expanded)
   if M.NoRecipe(itemID) then tooltip:AddLine("This copy can't be used in recipes (Dwarf Explorer's Bible)", 1, 0.45, 0.45) end
   local campOff = M.CampOff(itemID)
   if not uses and not made and not camp and not campOff then return end
-  -- Line 1: what it's for.
+  -- Line 1: what it's for, and its best use.
   local what = {}
-  if uses then what[#what + 1] = ("Used in %d recipe%s (Dwarf Explorer's Bible)"):format(#uses, #uses == 1 and "" or "s") end
+  if uses then
+    local best = M.BestUse(itemID)
+    local bestText = best and best.pr.profit and best.pr.profit > 0 and (", best " .. M.Name(best.r.product) .. " +" .. C.Money(best.pr.profit)) or ""
+    what[#what + 1] = ("Used in %d recipe%s%s (Dwarf Explorer's Bible)"):format(#uses, #uses == 1 and "" or "s", bestText)
+  end
   if camp then
     local parts = {}
     for _, c in ipairs(camp) do parts[#parts + 1] = M.CampText(c) end
@@ -348,15 +387,59 @@ local function addLines(tooltip, itemID, expanded)
   end
   local sell = M.Resolve(itemID, "sell")
   if sell.price and not mtShows then worth[#worth + 1] = "AH " .. C.Money(sell.price) .. " (" .. sell.label .. ")" end
-  local where = ns.Where and ns.Where.TooltipText(itemID)
-  if where then worth[#worth + 1] = where end
   if #worth > 0 then tooltip:AddLine(table.concat(worth, " · "), 0.85, 0.85, 0.85, true) end
-  if not expanded then return end
+  -- Optional cues: one vendor line, one "here" line.
+  local vline, vhere, vendors = M.VendorTipLine(itemID)
+  if vline then local c = vhere and HERE or GOLDC; tooltip:AddLine(vline, c[1], c[2], c[3], true) end
+  local here = M.HereTipLine(itemID)
+  if here then tooltip:AddLine(here, HERE[1], HERE[2], HERE[3], true) end
+  local alts = false
+  for _, h in ipairs(have and have.holders or {}) do if not h.isMe then alts = true end end
+  local more = (uses and #uses > 0) or made ~= nil or #vendors > 1 or alts or (sell.price and sell.ageSeconds)
+  if not expanded then
+    if more then tooltip:AddLine("Hold Shift for full crafting breakdown", 0.5, 0.5, 0.5) end
+    return
+  end
   if sell.price and sell.ageSeconds then tooltip:AddLine("  price seen " .. M.Ago(sell.ageSeconds) .. " ago", 0.6, 0.6, 0.6) end
   if have then
     for _, h in ipairs(have.holders) do
       if not h.isMe then tooltip:AddLine(("  %s: %d (%d bags, %d bank)"):format(h.name, h.bags + h.bank, h.bags, h.bank), 0.6, 0.8, 0.6) end
     end
+  end
+  if uses and #uses > 0 then
+    local list = M.UsesOf(itemID)
+    tooltip:AddLine("Best uses:", 1, 0.82, 0)
+    for i = 1, math.min(5, #list) do
+      local e = list[i]
+      local p = e.pr.profit
+      tooltip:AddDoubleLine("  " .. M.Name(e.r.product), p and ((p >= 0 and "+" or "-") .. C.Money(math.abs(p))) or "no price",
+        1, 1, 1, p and (p >= 0 and 0.2 or 1) or 0.6, p and (p >= 0 and 1 or 0.4) or 0.6, p and (p >= 0 and 0.2 or 0.4) or 0.6)
+    end
+    if #list > 5 then tooltip:AddLine(("  +%d more"):format(#list - 5), 0.6, 0.6, 0.6) end
+  end
+  if made and made[1] then
+    local r = made[1]
+    local parts = {}
+    for _, g in ipairs(r.reagents) do parts[#parts + 1] = g.n .. " " .. M.Name(g.id) end
+    tooltip:AddLine("Made from: " .. table.concat(parts, ", ") .. " (" .. r.prof .. ((r.skill or 0) > 0 and (" " .. r.skill) or "") .. ")", 0.85, 0.85, 0.85, true)
+    local A = ns.Alts
+    local n = 0
+    for _, row in ipairs(A and A.WhoCanCraft(r) or {}) do
+      if not row.isMe and n < 2 then n = n + 1; tooltip:AddLine("  " .. A.CraftText(row), 0.6, 0.8, 0.6) end
+    end
+  end
+  if #vendors > 0 then
+    tooltip:AddLine("Vendors you've seen:", 1, 0.82, 0)
+    for i = 1, math.min(5, #vendors) do
+      local v = vendors[i]
+      tooltip:AddDoubleLine("  " .. v.npc .. " (" .. (v.subzone and (v.subzone .. ", " .. v.zone) or v.zone) .. ")",
+        C.Money(v.price) .. (v.limited and " (limited)" or ""), 0.9, 0.9, 0.9, 1, 1, 1)
+    end
+    if #vendors > 5 then tooltip:AddLine(("  +%d more"):format(#vendors - 5), 0.6, 0.6, 0.6) end
+  end
+  if not here and ns.Where then
+    local t = ns.Where.TooltipText(itemID)
+    if t and t:find("^Nearest: ") then tooltip:AddLine(t, 0.85, 0.85, 0.85, true) end
   end
   if (uses or camp) and settings.altClick then tooltip:AddLine("  Alt-click: what can I make?", 0.5, 0.5, 0.5) end
 end

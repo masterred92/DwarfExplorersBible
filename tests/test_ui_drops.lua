@@ -68,6 +68,7 @@ M.check(#rows == 8 and total > 8 and rows[1].id == copp[1] and rows[1].right:fin
 -- The "My professions" hint: shown while no profession window has been seen, gone once one has.
 local savedSkills = char.skills; char.skills = {}
 RM.Open(2840)
+M.check(RM.ShownPane() == "materials", "first open straight onto an item shows the Materials pane")
 local W = RM.Frame()
 M.check(W.hint:IsShown() and W.hint:GetText() == "Open a profession window once to use this filter.", "grey hint under the filters until a profession is seen")
 char.skills = savedSkills; RM.Refresh()
@@ -191,7 +192,7 @@ M.check(st.id == 2840, "Back returns (click mode)")
 r2.scripts.OnEnter(r2)
 M.check(st.selected ~= st.list[2], "click mode: pointing at a row doesn't move the strip")
 RM.LAYOUT.STRIP_MODE = "hover"
-M.check(RM.LAYOUT.width == 660 and RM.LAYOUT.height == 632 and RM.LAYOUT.bg[4] == 1, "660x632, opaque background")
+M.check(RM.LAYOUT.width == 660 and RM.LAYOUT.height == 702 and RM.LAYOUT.bg[4] == 1, "660x702 (1.3.0: +30 tab bar, +40 callout card), opaque background")
 local name, counts, price = RM.HeaderText(268418)
 M.check(name == "Scarce Herb Seeds" and counts:find("Plant Seeds (1) at a Greenhouse", 1, true) and counts:find("hybridized", 1, true)
   and price:find("no price yet", 1, true), "camp header: plant only, can't be hybridized, no price yet")

@@ -60,7 +60,7 @@ function S.Role(id, kind)
     if grows then
       local names = {}
       for _, g in ipairs(grows) do names[#names + 1] = RM.Name(g) end
-      parts[#parts + 1] = "Greenhouse seed · grows into " .. table.concat(names, " or ") .. " (" .. S.GROWS_SOURCE .. ")"
+      parts[#parts + 1] = "Greenhouse seed · grows into " .. table.concat(names, " or ") .. ", " .. S.GROWS_SOURCE
     else
       parts[#parts + 1] = "Greenhouse seed · crop not reported yet"
     end

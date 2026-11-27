@@ -246,7 +246,7 @@ M.check(secs.vendor.subtotal == 210, "vendor section subtotal in copper")
 local mith = rowOf(secs.ah.rows, 3858)
 M.check(mith and mith.estCost == nil and mith.incomplete and secs.ah.incomplete and secs.incomplete, "no price: estCost nil and incomplete, never 0g")
 M.check(secs.ah.subtotal == 33 + 36 and secs.total == 210 + 69, "AH subtotal counts only known prices")
-M.check(S.NeedText(linen) == "Need 8 (have 2 bags, 4 bank → buy 1)", "need text")
+M.check(S.NeedText(linen) == "Need 8 (have 2 bags, 4 bank): buy 1", "need text")
 S.SetDone(2770, true)
 secs = S.Sections("Dun Morogh")
 M.check(rowOf(secs.done.rows, 2770) and not rowOf(secs.ah.rows, 2770), "mark done")
@@ -314,8 +314,10 @@ M.check(SE.Summary().empty, "no seeds: empty state")
 -- 10. Compact tooltips: 1-2 lines, Shift for more -------------------------------------------------------------
 tipLines = {}
 RM.AddTooltipLines(GameTooltip, 2589, false)
-M.check(#tipLines == 2, "default tooltip: two lines")
-M.check(tipLines[2]:find("You have 6 (2 bags, 4 bank)", 1, true) and tipLines[2]:find("Farm here: Dun Morogh", 1, true), "line 2: counts and where to farm")
+M.check(#tipLines == 4, "default tooltip: two lines, the 'here' cue and the Shift hint")
+M.check(tipLines[2]:find("You have 6 (2 bags, 4 bank)", 1, true) and not tipLines[2]:find("Farm here", 1, true), "line 2: counts and worth")
+M.check(tipLines[3]:find("^Farm here: Dun Morogh") ~= nil, "line 3: its own 'Farm here' line")
+M.check(tipLines[4] == "Hold Shift for full crafting breakdown", "quiet Shift hint")
 tipLines = {}
 RM.AddTooltipLines(GameTooltip, 2589, true)
 M.check(#tipLines > 2 and table.concat(tipLines, "\n"):find("Bankalt", 1, true), "Shift: price age and alts")
@@ -458,7 +460,8 @@ M.check(ew.edit:GetText():find("^DEB1:") and ew.edit:GetText():find("\nDEB2:", 1
 -- 13. Tabs and slash commands -------------------------------------------------------------------------------
 M.prints = {}
 M.slash("/deb", "shop")
-M.check(N.CurrentTab() == "shopping" and M.printed("Shopping list is empty"), "/deb shop opens Shopping (chat summary without a tab handler)")
+M.check(N.CurrentTab() == "shopping" and RM.ShownPane() == "shopping" and not M.printed("Shopping list is empty"), "/deb shop opens the Shopping tab (no chat summary once the window has tabs)")
+M.check(N.Summary("shopping"):find("Shopping list is empty", 1, true) ~= nil, "chat summary still available")
 local seen = {}
 N.RegisterTabHandler(function(tab) seen[#seen + 1] = tab end)
 M.slash("/deb", "seeds"); M.slash("/deb", "alts"); M.slash("/deb", "materials"); M.slash("/deb", "shopping")
