@@ -17,5 +17,6 @@ Data.lua
 Prices.lua
 DwarfExplorersBible.lua
 Drops.lua
+DropShare.lua
 UI.lua
 Broker.lua
