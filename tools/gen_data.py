@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Builds Data.lua from WoW: Forever's own client tables plus the server hotfixes Blizzard pushes on top of them.
 
-Usage: tools/gen_data.py <csv dir> --build 1.60.1.71037 [--hotfixes <dir>] [--hotfix-build 70959] [--vendor data.json]
+Usage: tools/gen_data.py <csv dir> --build 1.60.1.71139 [--hotfixes <dir>] [--hotfix-build 70959] [--vendor data.json]
        [--out Data.lua]
 
 <csv dir> holds the client DB2 tables for product `wowf` at that build, exported from
@@ -22,7 +22,7 @@ import argparse, csv, json, os, sys
 
 ap = argparse.ArgumentParser()
 ap.add_argument("src")
-ap.add_argument("--build", required=True, help="full client build, e.g. 1.60.1.71037")
+ap.add_argument("--build", required=True, help="full client build, e.g. 1.60.1.71139")
 ap.add_argument("--hotfixes")
 ap.add_argument("--hotfix-build", help="build number whose hotfix rows to use (default: --build's)")
 ap.add_argument("--vendor")

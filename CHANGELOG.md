@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+- Recipe data rebuilt from client build 1.60.1.71139 (via wago.tools), plus that build's server hotfixes. 2,091 recipes (was 2,090).
+- Pattern: Centaur Hoofwarmers is now in the recipe list (Leatherworking, yellow/grey at 170/180; 12 Thick Leather and 2 Heavy Silken Thread), after the Nov 23 hotfix made the pattern learnable.
+- SAF-T Tabs and SAF-T Copper Bomb now use Linen Cloth instead of a Linen Cloak (that build's SpellReagents hotfixes, via wago.tools).
+- Skywall Souffle now uses 1 Small Egg and Mild Spices (was 2 Small Eggs and Simple Flour); Pincer Bites use Mild Spices instead of Simple Flour (same source).
+
 ## 1.2.0
 - New window, from UI Bot's approved mockup: 660x632 and opaque, Back with a clickable breadcrumb, a bigger header (icon, name, price and where it's from), recipe icons, profit on the right, and "not learned" or a tick next to each profession.
 - Search shows results as you type (up to 8, with how many recipes use each) and matches the start of words: "copp" finds Copper Bar and Handful of Copper Bolts, "opper" finds nothing. An exact name comes first.

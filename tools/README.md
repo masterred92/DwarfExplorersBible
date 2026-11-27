@@ -9,8 +9,15 @@
 
 | Release | Client build | Kept at |
 |---|---|---|
+| 1.2.1 | 1.60.1.71139 (tables + that build's hotfixes) | `<deb-db2 export folder>/1.60.1.71139/` (CSV exports, hotfix JSON, SHA256SUMS, rebuild command in its README.md) |
 | 1.2.0 | 1.60.1.71037 (tables) + 70959 hotfixes | `<deb-db2 export folder>/1.60.1.71037/` (CSV exports, hotfix JSON, SHA256SUMS, rebuild command in its README.md) |
 | 1.2.0 (first build, d939aec) | 1.60.1.70959 tables | `<deb-db2 export folder>/1.60.1.70959/` (same 10 tables, byte-identical to 71037's; `cmp` command in its README.md) |
+
+Rebuild 1.2.1's Data.lua:
+
+    D=<deb-db2 export folder>/1.60.1.71139
+    tools/gen_data.py $D/csv --build 1.60.1.71139 --hotfixes $D/hotfixes-71139 \
+      --vendor <nexus-data.json> --out Data.lua
 
 Rebuild 1.2.0's Data.lua:
 

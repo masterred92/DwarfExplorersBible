@@ -1,5 +1,5 @@
 -- Checks the bundled Forever data (client tables + server hotfixes) and the 1.1.0 tooltip/price additions.
--- Expected values come from Forever's client DB2 tables and wago.tools hotfix rows for build 70959, applied to build 71037 (1.2.0), plus the
+-- Expected values come from Forever's client DB2 tables and wago.tools hotfix rows for build 71139 (1.2.1), plus the
 -- server-only camp changes in Blizzard's Nov 19, 2026 hotfix notes.
 package.path = "./tests/?.lua;" .. package.path
 local M = require("mock_wow")
@@ -35,8 +35,8 @@ local function tooltipFor(id)
   return table.concat(tipLines, "\n")
 end
 
-M.check(D.build == "1.60.1.71037", "data stamped with its client build")
-M.check(#RM.recipes == 2090, "2,090 bundled recipes (1,971 in 1.0.5): " .. #RM.recipes)
+M.check(D.build == "1.60.1.71139", "data stamped with its client build")
+M.check(#RM.recipes == 2091, "2,091 bundled recipes (2,090 in 1.2.0): " .. #RM.recipes)
 
 -- 1. Herbalism, Skinning and Fishing camp crafts (skill levels after the hotfix).
 local camp = {
@@ -167,4 +167,22 @@ M.check(RM.Search("scarce")[1] == 268418, "Scarce Herb Seeds still searchable")
 M.check(#D.camp == 7, "7 camp actions (8 before the Nov 19 hotfix)")
 local seedHyb = bySpell(1263070)
 M.check(seedHyb and seedHyb.prof == "Herbalism", "the Seed Hybridizer itself is still craftable (re-enabled Nov 19)")
+
+-- 13. 1.2.1: build 1.60.1.71139 tables plus that build's server hotfixes.
+local hoof = bySpell(1294289)
+M.check(hoof and hoof.prof == "Leatherworking" and hoof.product == 274490
+    and hoof.skill == 170 and hoof.grey == 180
+    and reagentsOf(hoof)[4304] == 12 and reagentsOf(hoof)[8343] == 2
+    and RM.Name(274490) == "Centaur Hoofwarmers",
+  "Centaur Hoofwarmers: 12 Thick Leather, 2 Heavy Silken Thread, 170/180")
+M.check(reagentsOf(bySpell(1266893))[2589] == 1 and not reagentsOf(bySpell(1266893))[2570],
+  "SAF-T Tabs use Linen Cloth, not a Linen Cloak")
+M.check(reagentsOf(bySpell(1266906))[2589] == 1 and not reagentsOf(bySpell(1266906))[2570],
+  "SAF-T Copper Bomb uses Linen Cloth, not a Linen Cloak")
+local souffle = reagentsOf(bySpell(1270633))
+M.check(souffle[6889] == 1 and souffle[2678] == 1 and not souffle[10284],
+  "Skywall Souffle: 1 Small Egg and Mild Spices (not 2 eggs and Simple Flour)")
+local bites = reagentsOf(bySpell(1270635))
+M.check(bites[2675] == 1 and bites[2678] == 1 and not bites[10284],
+  "Pincer Bites use Mild Spices instead of Simple Flour")
 M.done("Forever data")
