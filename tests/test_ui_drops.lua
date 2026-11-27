@@ -380,6 +380,7 @@ M.check(title == ("Drops from (%d kills)"):format(db.drops[299][2589].loots)
   and sum:find("Timber Wolf", 1, true) and sum:find("from " .. db.drops[299][2589].loots .. " kills", 1, true) and not sum:find("from your ", 1, true) and #list == 1, "material page 'Drops from'")
 -- 'N kills' counts only the mobs listed: add a second mob under 20 kills that dropped linen.
 db.drops[1922][2589] = { loots = 5, seen = 2 }
+Dr.InvalidateCombined()
 local title2, sum2, list2 = RM.DropsSummary(2589)
 M.check(title2 == title and #list2 == 1 and sum2:find("Timber Wolf", 1, true), "'N kills' counts only the listed mobs, not the ones under 20")
 M.check(RM.DropsSummary(2934) == "Drops from", "no mob listed yet: plain 'Drops from'")
@@ -448,6 +449,7 @@ for _, f in ipairs({ "Drops.lua", "UI.lua", "DwarfExplorersBible.lua" }) do
 end
 -- Overlay with more mobs than fit: no scrollbar, the last line says how many more.
 for cid = 5000, 5019 do db.drops[cid] = { [2934] = { loots = 20, seen = 5 } } end
+Dr.InvalidateCombined()
 RM.Navigate(2934, true); RM.SetDropsOverlay(true)
 local P, fitN = RM.Frame().dropsPanel, RM.DropsLines()
 M.check(#P.lines == fitN and fitN < 20 and P.lines[fitN].shown and P.lines[fitN]:GetText():find("+" .. (20 - fitN + 1) .. " more mobs", 1, true),

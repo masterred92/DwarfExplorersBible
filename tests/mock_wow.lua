@@ -5,7 +5,7 @@ M.now, M.clock, M.combat, M.encounter, M.lockdown = 1790000000, 1000, false, fal
 M.timers, M.frames, M.prints, M.sounds, M.chat = {}, {}, {}, {}, {}
 M.secret = {}
 M.group = { inGroup = false, inRaid = false, leader = false, assist = false, guild = false }
-M.addonMessages, M.addonPrefixes, M.clipboard, M.sendResult = {}, {}, nil, 0
+M.addonMessages, M.addonPrefixes, M.sendResult = {}, {}, 0
 
 local function frameObj(name)
   local fr = { events = {}, scripts = {}, shown = true, name = name, points = {}, kids = {} }
@@ -40,7 +40,7 @@ M.frameObj = frameObj
 
 function M.install(env)
   env = env or _G
-  M.addonMessages, M.addonPrefixes, M.clipboard, M.sendResult, M.throttle = {}, {}, nil, 0, false
+  M.addonMessages, M.addonPrefixes, M.sendResult, M.throttle = {}, {}, 0, false
   env.issecretvalue = function(v) return v ~= nil and M.secret[v] == true end
   env.time = function() return M.now end
   env.date = os.date
@@ -59,7 +59,6 @@ function M.install(env)
   env.UnitIsGroupAssistant = function() return M.group.assist end
   env.C_InstanceEncounter = { IsEncounterInProgress = function() return M.encounter end }
   env.IsInGuild = function() return M.group.guild end
-  env.CopyToClipboard = function(s) M.clipboard = s; return type(s) == "string" and #s or 0 end
   env.C_ChatInfo = { InChatMessagingLockdown = function() return M.lockdown end,
     SendChatMessage = function(msg, chatType) M.chat[#M.chat + 1] = { msg, chatType } end,
     RegisterAddonMessagePrefix = function(prefix)

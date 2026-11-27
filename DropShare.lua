@@ -12,8 +12,10 @@ S.MAX_CHUNK = 240
 S.SEND_GAP = 0.25
 S.ANNOUNCE_GAP = 15
 S.DATA_GAP = 15
+S.PUSH_GAP = 15
 S.QUERY_GAP = 30
 S.ASSEMBLE_TTL = 30
+S.ALLOWED_CHANNELS = { PARTY = true, RAID = true, GUILD = true, INSTANCE_CHAT = true }
 S.RESULT_SUCCESS, S.RESULT_THROTTLE, S.RESULT_CHANNEL_THROTTLE, S.RESULT_LOCKDOWN = 0, 3, 8, 11
 
 local MAX_KILLS, MAX_ID, MAX_MOBS, MAX_ITEMS, MAX_NAME = 1000000, 99999999, 2000, 40, 80
@@ -124,9 +126,12 @@ function S.Decode(text)
     end
     local cid = parseInt(fields[1], 1, MAX_ID)
     local kills = parseInt(fields[2], 1, MAX_KILLS)
-    if cid and kills then
+    -- A second copy of the same mob in one string is skipped (first wins), so loots
+    -- cannot be stacked past that mob's kills.
+    if cid and kills and not snap.kills[cid] then
       snap.kills[cid] = kills
       local name = unescapeName(fields[3] or "")
+      name = name:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1"):gsub("|T.-|t", ""):gsub("|+", "")
       if #name > MAX_NAME then name = name:sub(1, MAX_NAME) end
       if name ~= "" then snap.names[cid] = name end
       snap.drops[cid] = snap.drops[cid] or {}
@@ -144,16 +149,17 @@ function S.Decode(text)
   return snap, sid, hash, nil
 end
 
-function S.Import(text, silent)
+function S.Import(text, silent, sender)
   local snap, sid, hash, err = S.Decode(text)
   if not snap then
     if not silent then Core.Print(err == "empty" and "paste a drop string first." or "couldn't read that drop string.") end
     return false, err or "malformed"
   end
-  local ok, kind = Dr.ApplyShare(sid, snap, hash)
+  local ok, kind = Dr.ApplyShare(sid, snap, hash, sender)
   if not silent then
     local n = 0; for _ in pairs(snap.kills) do n = n + 1 end
     if kind == "own" then Core.Print("that's your own export; nothing changed.")
+    elseif kind == "sender" then Core.Print("that drop id is already tied to another player.")
     elseif kind == "same" then Core.Print("already had that drop string.")
     elseif ok and kind == "replaced" then Core.Print(("updated drop counts from another player (%d mob%s)."):format(n, n == 1 and "" or "s"))
     elseif ok then Core.Print(("added drop counts from another player (%d mob%s)."):format(n, n == 1 and "" or "s"))
@@ -167,18 +173,10 @@ function S.OpenExport()
   local text = S.EncodePersonal() or ""
   local n = 0
   if Dr and Dr.PersonalSnapshot then for _ in pairs(Dr.PersonalSnapshot().kills) do n = n + 1 end end
-  local opts = {}
-  if CopyToClipboard then
-    opts.actionLabel = "Copy"
-    opts.action = function(s)
-      CopyToClipboard(s)
-      Core.Print("copied the drop string.")
-    end
-  end
   return Core.ShowText("DropExport",
     n > 0 and ("Drop data (%d mob%s): Ctrl+C to copy"):format(n, n == 1 and "" or "s")
       or "Drop data: you haven't looted any mobs yet. Ctrl+C to copy.",
-    text, opts)
+    text)
 end
 
 function S.OpenImport()
@@ -215,10 +213,11 @@ local function startPump()
   local function step()
     pumping = false
     if #queue == 0 then return end
-    local ok, why = S.CanSend()
+    local ok = S.CanSend()
     if not ok then
+      -- Includes "no api": never call SendAddonMessage when the function is missing.
       pending = true
-      if why == "lockdown" or why == "combat" then return end
+      return
     end
     local item = table.remove(queue, 1)
     -- All four arguments are plain strings this file built (SecretArguments = "NotAllowed").
@@ -235,6 +234,8 @@ local function startPump()
     if #queue > 0 and C_Timer and C_Timer.After then
       pumping = true
       C_Timer.After(S.SEND_GAP, step)
+    elseif pending then
+      S.Flush()
     end
   end
   step()
@@ -248,9 +249,31 @@ end
 function S.QueueSize() return #queue end
 function S.ClearQueue() queue = {} end
 
+-- Drop queued data chunks for this channel (and announces for any other hash) so a newer
+-- snapshot replaces the old one instead of stacking behind it.
+function S.PurgeQueuedData(chatType, keepHash)
+  local kept = {}
+  for i = 1, #queue do
+    local item = queue[i]
+    local dh = item.msg:match("^D:(%x+):")
+    local ah = item.msg:match("^A:[%w]+:(%x+)$")
+    local stale = item.chatType == chatType and (dh or (ah and ah ~= keepHash))
+    if not stale then kept[#kept + 1] = item end
+  end
+  queue = kept
+end
+
+function S.DataInFlight(chatType)
+  for i = 1, #queue do
+    if (not chatType or queue[i].chatType == chatType) and queue[i].msg:match("^D:") then return true end
+  end
+  return false
+end
+
 function S.QueueData(chans, payload, hash)
   local chunks = S.BuildChunks(payload)
   for _, ch in ipairs(chans) do
+    S.PurgeQueuedData(ch, hash)
     lastDataByChannel[ch] = { hash = hash, at = C.Clock() }
     for i = 1, #chunks do S.Enqueue(ch, chunks[i]) end
   end
@@ -276,18 +299,40 @@ function S.Flush()
     lastAnnounceAt = now
   end
   if hashChanged then
-    S.QueueData(chans, payload, hash)
-    lastSentHash = hash
+    local inFlight, recent = S.DataInFlight(), false
+    for _, ch in ipairs(chans) do
+      local prev = lastDataByChannel[ch]
+      if prev and (now - (prev.at or 0)) < S.PUSH_GAP then recent = true end
+    end
+    if inFlight or recent then
+      -- Keep the queue to one payload: the send already in flight (or just started) finishes,
+      -- then Flush runs again with the latest hash (lastSentHash is left unchanged).
+      pending = true
+      if not inFlight and C_Timer and C_Timer.After then
+        C_Timer.After(S.PUSH_GAP, function() if pending then Core.SafeCall("drop sync", S.Flush) end end)
+      end
+    else
+      S.QueueData(chans, payload, hash)
+      lastSentHash = hash
+      pending = false
+    end
+  else
+    pending = false
   end
-  pending = false
   startPump()
   return true
+end
+
+local function assembleTTL(n)
+  -- Throttled chunks can arrive a second apart; keep the assembly alive for the
+  -- remaining chunks of a large payload, timed from the last chunk we saw.
+  return math.max(S.ASSEMBLE_TTL, (tonumber(n) or 1) * 2)
 end
 
 local function expireAssemblies()
   local now = C.Clock()
   for k, rec in pairs(assembling) do
-    if now - (rec.at or 0) > S.ASSEMBLE_TTL then assembling[k] = nil end
+    if now - (rec.at or 0) > assembleTTL(rec.n) then assembling[k] = nil end
   end
 end
 
@@ -303,6 +348,7 @@ local function handleData(sender, hash, i, n, data)
     assembling[key] = rec
   end
   if not rec.parts[i] then rec.parts[i] = data; rec.count = rec.count + 1 end
+  rec.at = C.Clock()
   if rec.count ~= rec.n then return end
   local bits = {}
   for j = 1, rec.n do
@@ -310,7 +356,7 @@ local function handleData(sender, hash, i, n, data)
     bits[j] = rec.parts[j]
   end
   assembling[key] = nil
-  S.Import(table.concat(bits), true)
+  S.Import(table.concat(bits), true, sender)
 end
 
 local function maybeQuery(channel, sid, hash)
@@ -319,6 +365,9 @@ local function maybeQuery(channel, sid, hash)
   local have = shares and shares[sid]
   if have and have.hash == hash then return end
   local key, now = sid .. ":" .. hash, C.Clock()
+  for k, at in pairs(lastQueryAt) do
+    if now - at >= S.QUERY_GAP then lastQueryAt[k] = nil end
+  end
   if lastQueryAt[key] and now - lastQueryAt[key] < S.QUERY_GAP then return end
   lastQueryAt[key] = now
   if S.CanSend() then S.Enqueue(channel, "Q:" .. sid .. ":" .. hash); startPump() else pending = true end
@@ -336,12 +385,18 @@ local function maybeAnswer(channel, wantSid, wantHash)
   startPump()
 end
 
+local function shortName(s)
+  if type(s) ~= "string" or s == "" then return nil end
+  return (s:match("^([^%-]+)") or s):lower()
+end
+
 function S.OnAddonMessage(prefix, text, channel, sender)
   prefix, text, channel, sender = C.Safe(prefix), C.Safe(text), C.Safe(channel), C.Safe(sender)
   if prefix ~= S.PREFIX or type(text) ~= "string" or text == "" then return end
   if type(sender) ~= "string" or sender == "" then return end
+  if type(channel) ~= "string" or not S.ALLOWED_CHANNELS[channel:upper()] then return end
   local me = UnitName and C.Safe(UnitName("player"))
-  if me and sender == me then return end
+  if me and shortName(sender) == shortName(me) then return end
   local kind, a = text:match("^([ADQ]):(.*)$")
   if not kind then return end
   if kind == "A" then
@@ -359,6 +414,12 @@ end
 
 function S.Pending() return pending end
 function S.SetPending(v) pending = v and true or false end
+function S.Pump() startPump() end
+function S.QueryMapSize()
+  local n = 0
+  for _ in pairs(lastQueryAt) do n = n + 1 end
+  return n
+end
 function S.ResetComms()
   queue, pumping, pending = {}, false, false
   lastSentHash, lastAnnounceAt = nil, 0

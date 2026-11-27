@@ -18,12 +18,15 @@ L.DONE_SIZE = 200       -- corpse GUIDs remembered (across /reload) so a corpse 
 local TRADE_GOODS = Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods or 7
 local SLOT_ITEM = Enum and Enum.LootSlotType and Enum.LootSlotType.Item or 1
 
-local db
+local db, combinedCache
 local lastCast = nil    -- { at = C.Clock(), kind = "skin" | "open" | "pickpocket" }, from your own UNIT_SPELLCAST_SUCCEEDED
 local fromTarget = false   -- the last window read fell back to your dead target (no GetLootSourceInfo answer)
 
 -- Saved data: drops[creatureID][itemID] = { loots = kills counted, seen = kills it dropped in }; kills[creatureID] =
 -- corpses counted; names[creatureID] = mob name (learned from your target or the mob tooltip); done = recent GUIDs.
+local function invalidateCombined() combinedCache = nil end
+function L.InvalidateCombined() invalidateCombined() end
+
 function L.NewShareId()
   local t = (C.Now() or 0) % 4294967296
   local r = (math.random(0, 65535) + (math.floor((C.Clock() or 0) * 1000) % 65536)) % 65536
@@ -40,6 +43,7 @@ function L.Attach(d)
   if type(db.dropShareId) ~= "string" or not db.dropShareId:match("^[%w]+$") or #db.dropShareId < 6 or #db.dropShareId > 32 then
     db.dropShareId = L.NewShareId()
   end
+  invalidateCombined()
 end
 
 function L.SourceId() return db and db.dropShareId end
@@ -180,6 +184,7 @@ function L.Record(corpses)
       counted = counted + 1
     end
   end
+  if counted > 0 then invalidateCombined() end
   return counted
 end
 
@@ -189,7 +194,7 @@ local function learnTargetName(corpses)
   local guid = str(UnitGUID("target"))
   local cid = guid and corpses[guid] and L.CreatureID(guid)
   local name = cid and str(UnitName("target"))
-  if name then db.mobNames[cid] = name end
+  if name then db.mobNames[cid] = name; invalidateCombined() end
 end
 
 function L.OnLootOpened(isFromItem)
@@ -279,24 +284,65 @@ local function addCounts(dstKills, dstDrops, dstNames, src)
 end
 
 function L.Combined()
+  if combinedCache then return combinedCache end
   local kills, drops, names = {}, {}, {}
   addCounts(kills, drops, names, { kills = db and db.dropKills, drops = db and db.drops, names = db and db.mobNames })
   for _, sh in pairs(db and db.dropShares or {}) do addCounts(kills, drops, names, sh) end
-  return { kills = kills, drops = drops, names = names }
+  combinedCache = { kills = kills, drops = drops, names = names }
+  return combinedCache
+end
+
+L.MAX_SHARES = 50
+
+-- Short name, lower-cased, with any -Realm suffix removed (CHAT_MSG_ADDON senders are Name-Realm).
+function L.NormalizeSender(sender)
+  if type(sender) ~= "string" or sender == "" then return nil end
+  return (sender:match("^([^%-]+)") or sender):lower()
+end
+
+local function shareCount()
+  local n = 0
+  for _ in pairs(db and db.dropShares or {}) do n = n + 1 end
+  return n
+end
+
+-- Drop the oldest synced snapshots until there is room for one more (cap MAX_SHARES).
+local function pruneShares()
+  while shareCount() >= L.MAX_SHARES do
+    local oldest, oldestAt
+    for sid, sh in pairs(db.dropShares) do
+      local at = (type(sh) == "table" and sh.at) or 0
+      if not oldest or at < oldestAt then oldest, oldestAt = sid, at end
+    end
+    if not oldest then break end
+    db.dropShares[oldest] = nil
+  end
 end
 
 -- Replace this source's snapshot. Same source + same hash is a no-op (no double count).
--- Never writes dropDone. Returns ok, kind ("added"/"replaced"/"same"/"own"/"empty").
-function L.ApplyShare(sourceId, snap, hash)
+-- Never writes dropDone. Returns ok, kind ("added"/"replaced"/"same"/"own"/"empty"/"sender").
+-- sender, when given (addon comms), is bound to the source on first receipt; a different
+-- sender cannot later overwrite that snapshot.
+function L.ApplyShare(sourceId, snap, hash, sender)
   if not db then return false, "not loaded" end
   if type(sourceId) ~= "string" or sourceId == "" then return false, "empty" end
   if sourceId == db.dropShareId then return false, "own" end
   if type(snap) ~= "table" then return false, "empty" end
   local existing = db.dropShares[sourceId]
   if existing and hash and existing.hash == hash then return true, "same" end
+  local norm = sender and L.NormalizeSender(sender)
+  if norm and existing and existing.sender and existing.sender ~= norm then
+    return false, "sender"
+  end
+  if not existing then pruneShares() end
   local kills, drops, names = {}, {}, {}
   addCounts(kills, drops, names, snap)
-  db.dropShares[sourceId] = { hash = hash, kills = kills, drops = drops, names = names }
+  db.dropShares[sourceId] = {
+    hash = hash, kills = kills, drops = drops, names = names,
+    at = (C.Now and C.Now()) or (C.Clock and C.Clock()) or 0,
+    sender = (existing and existing.sender) or norm,
+  }
+  invalidateCombined()
   return true, existing and "replaced" or "added"
 end
 
@@ -352,8 +398,8 @@ function L.AddUnitLines(tooltip, guid, name)
   local cid = L.CreatureID(guid)
   if not cid or not db then return end
   name = str(name)
-  if name then db.mobNames[cid] = name end
-  local kills = db.dropKills[cid] or 0
+  if name and db.mobNames[cid] ~= name then db.mobNames[cid] = name; invalidateCombined() end
+  local kills = L.Kills(cid)
   if kills > 0 and kills < L.MIN_LOOTS then
     -- Mist (BCD3E6), the style table's idle text colour.
     tooltip:AddLine(("Learning drops: %d of %d kills"):format(kills, L.MIN_LOOTS), 0.74, 0.83, 0.90)
