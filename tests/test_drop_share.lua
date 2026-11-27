@@ -324,11 +324,13 @@ M.check(decDup.kills[299] == 20 and decDup.drops[299][2589].loots == 20 and decD
 -- Synced source is bound to the first sender; another sender cannot overwrite it.
 local bindSnap = { kills = { [1100] = 20 }, drops = { [1100] = { [2589] = { loots = 20, seen = 2 } } }, names = {} }
 local ok, kind = Dr.ApplyShare("bindhostaaaa", bindSnap, "aaaaaaa1", "Bob-TestRealm")
-M.check(ok and kind == "added" and db.dropShares["bindhostaaaa"].sender == "bob", "first addon-comms sender is stored normalised")
+M.check(ok and kind == "added" and db.dropShares["bindhostaaaa"].sender == "bob-testrealm", "first addon-comms sender is stored normalised (name-realm, lower case)")
 ok, kind = Dr.ApplyShare("bindhostaaaa", { kills = { [1100] = 40 }, drops = { [1100] = { [2589] = { loots = 40, seen = 8 } } }, names = {} }, "aaaaaaa2", "Eve-TestRealm")
 M.check((not ok) and kind == "sender" and db.dropShares["bindhostaaaa"].kills[1100] == 20, "a different sender cannot overwrite that snapshot")
-ok, kind = Dr.ApplyShare("bindhostaaaa", { kills = { [1100] = 25 }, drops = { [1100] = { [2589] = { loots = 25, seen = 3 } } }, names = {} }, "aaaaaaa3", "bob-OtherRealm")
-M.check(ok and kind == "replaced" and db.dropShares["bindhostaaaa"].kills[1100] == 25, "the same short name can update the snapshot")
+ok, kind = Dr.ApplyShare("bindhostaaaa", { kills = { [1100] = 30 }, drops = { [1100] = { [2589] = { loots = 30, seen = 3 } } }, names = {} }, "aaaaaaa4", "bob-OtherRealm")
+M.check((not ok) and kind == "sender" and db.dropShares["bindhostaaaa"].kills[1100] == 20, "a Bob on another realm is a different player (cross-realm)")
+ok, kind = Dr.ApplyShare("bindhostaaaa", { kills = { [1100] = 25 }, drops = { [1100] = { [2589] = { loots = 25, seen = 3 } } }, names = {} }, "aaaaaaa3", "BOB-Test Realm")
+M.check(ok and kind == "replaced" and db.dropShares["bindhostaaaa"].kills[1100] == 25, "the same player can update the snapshot (realm spaces and case ignored)")
 
 -- Cap: the oldest of 51 sources is evicted.
 db.dropShares = {}

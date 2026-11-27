@@ -49,15 +49,23 @@ P.Register({ id = "scan", label = "Dwarf Explorer's Bible scan",
   available = function() return true end,
   get = function(id) local r = P.cache and P.cache[id]; return r and pos(r.p), r and r.t end })
 
-P.DEFAULT_ORDER = { "pricelog", "auctionator", "tsm", "auctioneer", "scan" }
+-- Bundled Forever baseline (optional ns.BaselinePrices = { market, capturedAt, prices = { [itemID] = copper } }).
+-- Always last: any live source beats it. Its time is the capture time, so the UI can say "Forever baseline (Nov 27)".
+P.Register({ id = "baseline", label = "Forever baseline",
+  available = function() local b = ns.BaselinePrices; return type(b) == "table" and type(b.prices) == "table" end,
+  get = function(id) local b = ns.BaselinePrices; return pos(b.prices[id]), C.SafeNumber(b.capturedAt) end })
+
+P.DEFAULT_ORDER = { "pricelog", "auctionator", "tsm", "auctioneer", "scan", "baseline" }
+P.LAST = { baseline = true } -- never moved ahead of a live source by /deb prefer or /deb order
 
 -- Order from settings (comma list), unknown ids dropped, missing ids appended in default order.
 function P.Order(setting)
   local out, seen = {}, {}
   for idv in tostring(setting or ""):gmatch("[^,%s]+") do
-    if P.byId[idv] and not seen[idv] then out[#out + 1] = idv; seen[idv] = true end
+    if P.byId[idv] and not seen[idv] and not P.LAST[idv] then out[#out + 1] = idv; seen[idv] = true end
   end
-  for _, idv in ipairs(P.DEFAULT_ORDER) do if not seen[idv] then out[#out + 1] = idv; seen[idv] = true end end
+  for _, idv in ipairs(P.DEFAULT_ORDER) do if not seen[idv] and not P.LAST[idv] then out[#out + 1] = idv; seen[idv] = true end end
+  for _, idv in ipairs(P.DEFAULT_ORDER) do if P.LAST[idv] then out[#out + 1] = idv end end
   return out
 end
 
@@ -81,12 +89,65 @@ function P.Installed()
   return out
 end
 
+-- The one price resolver every module uses ------------------------------------------------------
+-- side "sell" (what an item fetches): live AH -> your source order (PriceLog first by default, baseline last).
+-- side "buy" (what a reagent costs you): the same AH price, but a vendor that sells it
+-- (remembered from a merchant you opened, else the bundled Forever price) wins unless the AH is cheaper, and a
+-- vendor-capped reagent never costs more than the vendor price you've seen. "Live" = a price DEB saw in an AH
+-- search while the AH is open, under LIVE_SECONDS old. Never a made-up 0: no price gives price = nil, kind "none".
+-- Returns { price, kind = "vendor"|"ah"|"none", source = id, label, t, ageSeconds (nil = unknown),
+--   vendor = { npc, zone, price, t } when a remembered vendor sells it, capped = true when the vendor cap applied }.
+P.LIVE_SECONDS = 900
+local function result(price, kind, source, label, t, now)
+  t = C.SafeNumber(t)
+  local age = (t and t > 0) and math.max(0, now - t) or nil
+  return { price = price, kind = kind, source = source, label = label, t = t, ageSeconds = age }
+end
+
+local function ahPrice(itemID, setting, now)
+  local live = P.cache and P.cache[itemID]
+  if P.ahOpen and live and live.t and now - live.t <= P.LIVE_SECONDS and pos(live.p) then
+    return pos(live.p), "live AH", "live", live.t
+  end
+  return P.Get(itemID, setting)
+end
+
+function P.Resolve(itemID, side, setting)
+  local now = C.Now()
+  itemID = C.SafeNumber(itemID)
+  if not itemID then return result(nil, "none", nil, nil, nil, now) end
+  local price, label, id, t = ahPrice(itemID, setting, now)
+  if side ~= "buy" then
+    if not price then return result(nil, "none", nil, nil, nil, now) end
+    return result(price, "ah", id, label, t, now)
+  end
+  local V = ns.Vendors
+  local seen = V and V.Best and V.Best(itemID)
+  local vendor = (seen and seen.price) or P.Vendor(itemID)
+  if vendor and (not price or vendor <= price) then
+    local r = result(vendor, "vendor", "vendor", "vendor", seen and seen.t, now)
+    r.vendor = seen
+    return r
+  end
+  if ns.Data and ns.Data.vendorCap and ns.Data.vendorCap[itemID] then
+    local cap = P.Cap(itemID)
+    if cap and (not price or cap < price) then
+      local r = result(cap, "vendor", "vendorCap", "vendor cap", nil, now); r.capped = true; return r
+    end
+  end
+  if not price then return result(nil, "none", nil, nil, nil, now) end
+  return result(price, "ah", id, label, t, now)
+end
+
 -- Passive cache from your own AH searches (browse results and commodity searches). Never searches by itself.
 function P.Remember(itemID, unit, now)
   unit = pos(unit)
   if not (P.cache and itemID and unit) then return end
   local r = P.cache[itemID]
-  if not r or (now - (r.t or 0)) > 3600 or unit < r.p then P.cache[itemID] = { p = unit, t = now } end
+  if not r or (now - (r.t or 0)) > 3600 or unit < r.p then
+    P.cache[itemID] = { p = unit, t = now }
+    if ns.Cache then ns.Cache.Bump() end
+  end
 end
 
 -- Vendor prices ------------------------------------------------------------------------------
@@ -105,10 +166,11 @@ function P.Cap(itemID)
   return P.capCache and P.capCache[itemID] or nil
 end
 
--- Reads the open merchant window. Called on MERCHANT_SHOW; reads only, buys nothing.
-function P.ReadMerchant()
-  if not (P.vendorCache and GetMerchantNumItems and GetMerchantItemID) then return 0 end
-  local n = 0
+-- Rows of the open merchant window: { { id, unit (copper per item), avail (-1 = unlimited), stack } }.
+-- Gold-priced rows only (currency and extended-cost rows are skipped). Shared by ReadMerchant and Vendors.lua.
+function P.MerchantRows()
+  local rows = {}
+  if not (GetMerchantNumItems and GetMerchantItemID) then return rows end
   for i = 1, (C.SafeNumber(GetMerchantNumItems()) or 0) do
     local id = C.SafeNumber(GetMerchantItemID(i))
     local price, stack, avail
@@ -121,10 +183,20 @@ function P.ReadMerchant()
     end
     price, stack, avail = C.SafeNumber(price), C.SafeNumber(stack), C.SafeNumber(avail)
     if id and price and price > 0 and stack and stack > 0 then
-      local unit = math.max(1, math.floor(price / stack + 0.5))
-      if avail == -1 then P.vendorCache[id] = unit; n = n + 1
-      elseif P.capCache and ns.Data and ns.Data.vendorCap and ns.Data.vendorCap[id] then P.capCache[id] = unit; n = n + 1 end
+      rows[#rows + 1] = { id = id, unit = math.max(1, math.floor(price / stack + 0.5)), avail = avail, stack = stack }
     end
   end
+  return rows
+end
+
+-- Reads the open merchant window. Called on MERCHANT_SHOW; reads only, buys nothing.
+function P.ReadMerchant(rows)
+  if not P.vendorCache then return 0 end
+  local n = 0
+  for _, r in ipairs(rows or P.MerchantRows()) do
+    if r.avail == -1 then P.vendorCache[r.id] = r.unit; n = n + 1
+    elseif P.capCache and ns.Data and ns.Data.vendorCap and ns.Data.vendorCap[r.id] then P.capCache[r.id] = r.unit; n = n + 1 end
+  end
+  if n > 0 and ns.Cache then ns.Cache.Bump() end
   return n
 end

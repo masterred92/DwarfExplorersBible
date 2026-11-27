@@ -2,6 +2,8 @@
 
 - `fetch_hotfixes.py <build> <Table> <out.json> [ids]` - wago.tools' public hotfix list for one table (product wowf).
 - `gen_data.py <csv dir> --build <full build> [--hotfixes <dir>] [--hotfix-build <n>] [--vendor data.json]` - writes Data.lua.
+- `gen_zones.py <maps csv dir> <SpellName.csv> <build> [--out Zones.lua]` - writes Zones.lua (zone names, continents and
+  centres from UiMap / UiMapAssignment; gathering spell ids from Data.lua's lootCasts and SpellName).
 - `verify_api.py <wow-ui-source checkout> *.lua` - checks every API, event, template and font object we use exists in
   Blizzard's Forever UI source (run by `tests/run.sh <path>`). `host_api.py` lists client globals that aren't in it.
 
@@ -9,6 +11,7 @@
 
 | Release | Client build | Kept at |
 |---|---|---|
+| 1.3.0 | 1.60.1.71139 (Data.lua unchanged from 1.2.1; Zones.lua from UiMap + UiMapAssignment) | `<deb-db2 export folder>/1.60.1.71139-maps/` (CSV exports, SHA256SUMS, README.md) |
 | 1.2.1 | 1.60.1.71139 (tables + that build's hotfixes) | `<deb-db2 export folder>/1.60.1.71139/` (CSV exports, hotfix JSON, SHA256SUMS, rebuild command in its README.md) |
 | 1.2.0 | 1.60.1.71037 (tables) + 70959 hotfixes | `<deb-db2 export folder>/1.60.1.71037/` (CSV exports, hotfix JSON, SHA256SUMS, rebuild command in its README.md) |
 | 1.2.0 (first build, d939aec) | 1.60.1.70959 tables | `<deb-db2 export folder>/1.60.1.70959/` (same 10 tables, byte-identical to 71037's; `cmp` command in its README.md) |

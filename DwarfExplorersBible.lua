@@ -6,11 +6,13 @@ local M = {}
 ns.RM = M
 KennyDwarfExplorersBible = M
 
-local SCHEMA = 3
+local SCHEMA = 4
 -- filter* are the window's "Show only" boxes, remembered between sessions; only "My professions" starts ticked.
+-- filterMakeNow = "Make now" (craftable from your bags + bank; makeNowAlts adds what your alts hold).
+-- bestSkillUp sorts orange > yellow > green, cheapest per skill point.
 local DEFAULTS = { sources = table.concat(P.DEFAULT_ORDER, ","), tooltip = true, altClick = true, ahCut = 0.05, chainDepth = 3,
-  filterKnown = false, filterMine = true, filterPriced = false }
-local db, settings, char
+  filterKnown = false, filterMine = true, filterPriced = false, filterMakeNow = false, makeNowAlts = false, bestSkillUp = false }
+local db, settings, char, charKey
 M.byReagent, M.byProduct, M.recipes, M.byCamp = {}, {}, {}, {}
 
 -- Recipe index ---------------------------------------------------------------------------
@@ -80,6 +82,8 @@ function M.CampOff(id) return D.campOff and D.campOff[id] end
 
 -- Known recipes ---------------------------------------------------------------------------
 function M.Knows(r) return char ~= nil and char.learned[r.product] == true end
+function M.Char() return char end
+function M.CharKey() return charKey end
 function M.Skill(prof) return char and char.skills[prof] end
 
 -- Record what the open profession window says you know. Ignores linked, guild and NPC crafting windows.
@@ -117,34 +121,74 @@ function M.ScanTradeSkill()
 end
 
 -- Prices and profit -------------------------------------------------------------------------
-function M.Price(id) return P.Get(id, settings and settings.sources) end
-
--- What a reagent costs you: the vendor price if a vendor sells it (as Auctionator's crafting module does),
--- otherwise the auction price. Returns price, label.
--- A vendor-capped reagent never costs more than the vendor price you have seen.
-function M.ReagentPrice(id)
-  local v = P.Vendor(id)
-  if v then return v, "vendor" end
-  local p, label = M.Price(id)
-  local cap = M.VendorCapped(id) and P.Cap(id)
-  if cap and (not p or cap < p) then return cap, "vendor cap" end
-  return p, label
+-- Both go through P.Resolve, the one price resolver (see Prices.lua).
+function M.Resolve(id, side) return P.Resolve(id, side, settings and settings.sources) end
+-- What an item fetches: price, label, sourceId, time (or nil).
+function M.Price(id)
+  local r = M.Resolve(id, "sell")
+  if not r.price then return nil end
+  return r.price, r.label, r.source, r.t
 end
 
--- { cost, value, profit, missing }. cost = sum(reagent unit price x count); value = product price x items made
--- per craft (average of min/max) less the AH cut. profit is nil unless every reagent AND the product are priced,
--- so a missing price can never make a recipe look more profitable than it is.
+-- What a reagent costs you: a vendor that sells it (remembered or bundled), unless the AH is cheaper; a vendor-capped
+-- reagent never costs more than the vendor price you have seen. Returns price, label.
+function M.ReagentPrice(id)
+  local r = M.Resolve(id, "buy")
+  return r.price, r.label
+end
+
+local function older(a, b) if a == nil then return b end if b == nil then return a end return math.max(a, b) end
+
+-- Crafts per item made: average of min/max, less the AH cut (what one craft brings you).
+function M.CraftValue(r)
+  local pr = M.Resolve(r.product, "sell")
+  if not pr.price then return nil, nil end
+  return math.floor(pr.price * (r.min + r.max) / 2 * (1 - (settings and settings.ahCut or 0.05))), pr.ageSeconds
+end
+
+-- { cost, value, profit, missing, incomplete, unpriced = { itemIDs }, ageSeconds }. cost = sum(reagent unit price x count);
+-- value = product price x items made per craft less the AH cut. profit is nil unless every reagent AND the product
+-- are priced, so a missing price never reads as 0g and never makes a recipe look more profitable than it is.
+-- ageSeconds = age of the oldest price used (nil when no price has a known time).
 function M.Profit(r)
-  local cost, missing = 0, false
+  local cost, missing, unpriced, age = 0, false, {}, nil
   for _, g in ipairs(r.reagents) do
-    local p = M.ReagentPrice(g.id)
-    if p then cost = cost + p * g.n else missing = true end
+    local rp = M.Resolve(g.id, "buy")
+    if rp.price then cost = cost + rp.price * g.n; age = older(age, rp.ageSeconds)
+    else missing = true; unpriced[#unpriced + 1] = g.id end
   end
-  local pp = M.Price(r.product)
-  local value = pp and math.floor(pp * (r.min + r.max) / 2 * (1 - (settings and settings.ahCut or 0.05))) or nil
+  local value, vAge = M.CraftValue(r)
+  age = older(age, vAge)
+  if not value then missing = true; unpriced[#unpriced + 1] = r.product end
   local profit = (value and not missing) and (value - cost) or nil
-  if not value then missing = true end
-  return { cost = cost, value = value, profit = profit, missing = missing }
+  return { cost = cost, value = value, profit = profit, missing = missing, incomplete = missing, unpriced = unpriced, ageSeconds = age }
+end
+
+-- Buy-all vs mats-in-bags, for one craft. buyAll = every reagent bought; withBags = only what your bags + bank
+-- don't cover (out of pocket). owned = reagent units you already hold toward this craft. single = true when you
+-- own none (show one line). A reagent you must buy with no known price makes that line incomplete (profit nil).
+function M.ProfitLines(r)
+  local base = M.Profit(r)
+  local I = ns.Inventory
+  local oop, oopMissing, owned = 0, false, 0
+  for _, g in ipairs(r.reagents) do
+    local have = I and I.Count(g.id).mine or 0
+    local use = math.min(have, g.n)
+    owned = owned + use
+    local buy = g.n - use
+    if buy > 0 then
+      local rp = M.Resolve(g.id, "buy")
+      if rp.price then oop = oop + rp.price * buy else oopMissing = true end
+    end
+  end
+  local value = base.value
+  local withIncomplete = oopMissing or value == nil
+  return {
+    value = value, owned = owned, single = owned == 0, ageSeconds = base.ageSeconds, unpriced = base.unpriced,
+    incomplete = base.incomplete,
+    buyAll = { cost = base.cost, profit = base.profit, incomplete = base.incomplete },
+    withBags = { cost = oop, profit = (not withIncomplete) and (value - oop) or nil, incomplete = withIncomplete },
+  }
 end
 
 -- Recipe difficulty for your skill, the way the profession window colours it.
@@ -239,11 +283,14 @@ function M.FilterList(list, f)
   f = f or settings
   local mine = f.filterMine and M.HasProfessions()
   local out = {}
+  local PL = ns.Planner
   for _, e in ipairs(list) do
-    if (not f.filterKnown or M.Knows(e.r)) and (not mine or M.MyProfession(e.r)) and (not f.filterPriced or e.pr.profit ~= nil) then
+    if (not f.filterKnown or M.Knows(e.r)) and (not mine or M.MyProfession(e.r)) and (not f.filterPriced or e.pr.profit ~= nil)
+      and (not f.filterMakeNow or (PL and PL.MaxCrafts(e.r, f.makeNowAlts) > 0)) then
       out[#out + 1] = e
     end
   end
+  if f.bestSkillUp and PL then PL.SortSkillUp(out) end
   return out
 end
 
@@ -258,30 +305,59 @@ function M.CountKeys(t) local n = 0; for _ in pairs(t or {}) do n = n + 1 end; r
 function M.Settings() return settings end
 function M.DB() return db end
 
--- Tooltip line ---------------------------------------------------------------------------
-local function addLines(tooltip, itemID)
+-- Tooltip lines ----------------------------------------------------------------------------
+-- Two short lines by default: what the item is for, then what you hold and what it's worth. Hold Shift for the
+-- breakdown (alts holding it, price age, alt-click hint).
+local function shiftDown() return IsShiftKeyDown ~= nil and IsShiftKeyDown() == true end
+
+function M.HaveText(have)
+  if not have or have.mine <= 0 then return nil end
+  return ("You have %d (%d bags, %d bank)"):format(have.mine, have.bags, have.bank)
+end
+
+local function addLines(tooltip, itemID, expanded)
   local uses = M.byReagent[itemID]
   local made = M.byProduct[itemID]
   local camp = M.byCamp[itemID]
+  local I = ns.Inventory
+  if expanded == nil then expanded = shiftDown() end
   if M.NoRecipe(itemID) then tooltip:AddLine("This copy can't be used in recipes (Dwarf Explorer's Bible)", 1, 0.45, 0.45) end
   local campOff = M.CampOff(itemID)
   if not uses and not made and not camp and not campOff then return end
-  if uses then tooltip:AddLine(("Used in %d recipe%s (Dwarf Explorer's Bible)"):format(#uses, #uses == 1 and "" or "s"), 0.4, 0.8, 1) end
+  -- Line 1: what it's for.
+  local what = {}
+  if uses then what[#what + 1] = ("Used in %d recipe%s (Dwarf Explorer's Bible)"):format(#uses, #uses == 1 and "" or "s") end
   if camp then
     local parts = {}
     for _, c in ipairs(camp) do parts[#parts + 1] = M.CampText(c) end
-    tooltip:AddLine("Camp: " .. table.concat(parts, ", "), 0.4, 0.8, 1, true)
+    what[#what + 1] = "Camp: " .. table.concat(parts, ", ")
   end
-  if campOff then tooltip:AddLine(campOff, 1, 0.45, 0.45, true) end
-  if M.VendorCapped(itemID) then
-    local cap = P.Cap(itemID)
-    tooltip:AddLine("Sold by a vendor in Forever: don't pay more at the AH" .. (cap and (" (" .. C.Money(cap) .. ")") or ""), 1, 0.82, 0, true)
-  end
-  local p, label = M.Price(itemID)
+  if campOff then what[#what + 1] = campOff end
+  if #what == 0 then what[1] = "Made by a recipe (Dwarf Explorer's Bible)" end
+  tooltip:AddLine(table.concat(what, " · "), 0.4, 0.8, 1, true)
+  -- Line 2: what you hold and what it's worth.
+  local worth = {}
+  local have = I and I.Count(itemID)
+  worth[#worth + 1] = M.HaveText(have)
   -- MatTooltip already shows an AH price on every trade good: don't show a second one.
   local mt = type(_G["KennyMatTooltip"]) == "table" and _G["KennyMatTooltip"]
   local mtShows = mt and mt.IsMat and mt.Settings and (mt.Settings() or {}).enabled and mt.IsMat(itemID)
-  if p and not mtShows then tooltip:AddDoubleLine("  Auction (" .. label .. ")", C.Money(p), 0.7, 0.7, 0.7, 1, 1, 1) end
+  if M.VendorCapped(itemID) then
+    local cap = P.Cap(itemID)
+    worth[#worth + 1] = "Sold by a vendor in Forever: don't pay more at the AH" .. (cap and (" (" .. C.Money(cap) .. ")") or "")
+  end
+  local sell = M.Resolve(itemID, "sell")
+  if sell.price and not mtShows then worth[#worth + 1] = "AH " .. C.Money(sell.price) .. " (" .. sell.label .. ")" end
+  local where = ns.Where and ns.Where.TooltipText(itemID)
+  if where then worth[#worth + 1] = where end
+  if #worth > 0 then tooltip:AddLine(table.concat(worth, " · "), 0.85, 0.85, 0.85, true) end
+  if not expanded then return end
+  if sell.price and sell.ageSeconds then tooltip:AddLine("  price seen " .. M.Ago(sell.ageSeconds) .. " ago", 0.6, 0.6, 0.6) end
+  if have then
+    for _, h in ipairs(have.holders) do
+      if not h.isMe then tooltip:AddLine(("  %s: %d (%d bags, %d bank)"):format(h.name, h.bags + h.bank, h.bags, h.bank), 0.6, 0.8, 0.6) end
+    end
+  end
   if (uses or camp) and settings.altClick then tooltip:AddLine("  Alt-click: what can I make?", 0.5, 0.5, 0.5) end
 end
 M.AddTooltipLines = addLines
@@ -313,16 +389,53 @@ local migrations = {
   [2] = function(d) d.drops = d.drops or {}; d.dropKills = d.dropKills or {}; d.mobNames = d.mobNames or {}; d.dropDone = d.dropDone or {} end,
   -- Drop sharing: imported/synced snapshots, kept apart from your own kills (see DropShare.lua).
   [3] = function(d) d.dropShares = d.dropShares or {} end,
+  -- 1.3.0: per-character records move to alts (known recipes, skills, bag/bank counts); new namespaced sub-tables.
+  [4] = function(d)
+    d.alts = d.alts or {}
+    for key, c in pairs(d.chars or {}) do
+      if type(c) == "table" and not d.alts[key] then
+        -- key = "Realm-Faction-Name" (the realm may itself contain "-")
+        local realm, faction, name = tostring(key):match("^(.-)%-([^%-]+)%-([^%-]+)$")
+        d.alts[key] = { learned = c.learned or {}, skills = c.skills or {}, name = name, realm = realm, faction = faction }
+      end
+    end
+    d.chars = nil
+    d.vendors, d.shopping = d.vendors or {}, d.shopping or {}
+  end,
 }
+
+-- Small shared time formats: Ago(754) = "12m", Duration(1120) = "18m 40s".
+function M.Ago(sec)
+  sec = math.max(0, math.floor(C.SafeNumber(sec) or 0))
+  if sec < 60 then return sec .. "s" end
+  if sec < 3600 then return math.floor(sec / 60) .. "m" end
+  if sec < 86400 then return math.floor(sec / 3600) .. "h" end
+  return math.floor(sec / 86400) .. "d"
+end
+function M.Duration(sec)
+  sec = math.max(0, math.floor(C.SafeNumber(sec) or 0))
+  if sec >= 3600 then return ("%dh %02dm"):format(math.floor(sec / 3600), math.floor(sec / 60) % 60) end
+  return ("%dm %02ds"):format(math.floor(sec / 60), sec % 60)
+end
+
+-- Modules (Inventory, Alts, Vendors, Shopping, Seeds) add themselves here; Init attaches each.
+M.modules = {}
+function M.AddModule(mod) M.modules[#M.modules + 1] = mod end
 
 function M.Init()
   db = Core.Migrate(KennyDwarfExplorersBibleDB, migrations, SCHEMA)
-  db.chars, db.extra, db.names, db.cache = db.chars or {}, db.extra or {}, db.names or {}, db.cache or {}
+  db.alts, db.extra, db.names, db.cache = db.alts or {}, db.extra or {}, db.names or {}, db.cache or {}
   KennyDwarfExplorersBibleDB = db
   settings = Core.Settings(db.settings, DEFAULTS)
-  local key = C.RealmFaction() .. "-" .. tostring(UnitName and C.Safe(UnitName("player")) or "?")
-  db.chars[key] = db.chars[key] or { learned = {}, skills = {} }
-  char = db.chars[key]
+  local name = tostring(UnitName and C.Safe(UnitName("player")) or "?")
+  local key = C.RealmFaction() .. "-" .. name
+  db.alts[key] = db.alts[key] or { learned = {}, skills = {} }
+  char, charKey = db.alts[key], key
+  char.learned, char.skills = char.learned or {}, char.skills or {}
+  char.name = name
+  char.realm = tostring(GetRealmName and C.Safe(GetRealmName()) or "realm")
+  char.faction = tostring(UnitFactionGroup and C.Safe(UnitFactionGroup("player")) or "faction")
+  char.seen = C.Now()
   local rk = C.RealmFaction()
   db.cache[rk] = db.cache[rk] or {}
   P.cache = db.cache[rk]
@@ -332,6 +445,8 @@ function M.Init()
   P.capCache = db.vendorCap
   M.BuildIndex()
   if ns.Drops then ns.Drops.Attach(db) end
+  for _, mod in ipairs(M.modules) do Core.SafeCall("attach", mod.Attach, db, char, charKey) end
+  if ns.Cache then ns.Cache.Reset() end
 end
 
 local f = CreateFrame("Frame")
@@ -351,12 +466,20 @@ f:RegisterEvent("TRADE_SKILL_SHOW")
 f:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
 f:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
 f:RegisterEvent("COMMODITY_SEARCH_RESULTS_UPDATED")
+f:RegisterEvent("AUCTION_HOUSE_SHOW")
+f:RegisterEvent("AUCTION_HOUSE_CLOSED")
 f:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == ADDON then
     f:UnregisterEvent("ADDON_LOADED")
     M.Init()
   elseif event == "MERCHANT_SHOW" then
-    Core.SafeCall("merchant", P.ReadMerchant)
+    Core.SafeCall("merchant", function()
+      local rows = P.MerchantRows()
+      P.ReadMerchant(rows)
+      if ns.Vendors then ns.Vendors.Record(rows) end
+    end)
+  elseif event == "AUCTION_HOUSE_SHOW" then P.ahOpen = true
+  elseif event == "AUCTION_HOUSE_CLOSED" then P.ahOpen = false; if ns.Cache then ns.Cache.Bump() end
   elseif event == "PLAYER_LOGIN" then
     if TooltipDataProcessor and Enum and Enum.TooltipDataType then
       TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, OnItemTooltip)
@@ -372,12 +495,19 @@ f:SetScript("OnEvent", function(_, event, arg1)
   elseif event == "TRADE_SKILL_SHOW" or event == "TRADE_SKILL_LIST_UPDATE" then
     queueScan()
   elseif event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" then
-    Core.SafeCall("browse", function() for _, r in ipairs(C.AHBrowse()) do P.Remember(r.itemID, r.price, C.Now()) end end)
+    if C.InCombat() then return end
+    Core.SafeCall("browse", function()
+      local rows = C.AHBrowse()
+      for _, r in ipairs(rows) do P.Remember(r.itemID, r.price, C.Now()) end
+    end)
   elseif event == "COMMODITY_SEARCH_RESULTS_UPDATED" then
+    if C.InCombat() then return end
     local id = C.SafeNumber(arg1)
     Core.SafeCall("commodity", function()
-      local best = C.AHCommodity(id)[1]
-      if id and best then P.Remember(id, best.price, C.Now()) end
+      if not id then return end
+      local minP
+      for _, r in ipairs(C.AHCommodity(id)) do if not minP or r.price < minP then minP = r.price end end
+      if minP then P.Remember(id, minP, C.Now()) end
     end)
   end
 end)
@@ -389,7 +519,9 @@ SlashCmdList.KENNYDWARFEXPLORERSBIBLE = function(msg)
   local cmd, arg = (msg or ""):match("^(%S*)%s*(.-)$")
   local lc = cmd:lower()
   if not settings then return end
+  local Nav = ns.Nav
   if lc == "" then if M.Toggle then M.Toggle() end
+  elseif Nav and Nav.SLASH[lc] then Nav.Slash(lc, arg)
   elseif lc == "sources" then
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > ") .. ". Installed: " .. table.concat(P.Installed(), ", "))
   elseif lc == "prefer" and P.byId[arg:lower()] then
@@ -398,7 +530,7 @@ SlashCmdList.KENNYDWARFEXPLORERSBIBLE = function(msg)
     settings.sources = table.concat(P.Order(settings.sources), ",")
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > "))
   elseif lc == "prefer" then
-    Core.Print("unknown source '" .. arg .. "'. Source ids: pricelog, auctionator, tsm, auctioneer, scan")
+    Core.Print("unknown source '" .. arg .. "'. Source ids: pricelog, auctionator, tsm, auctioneer, scan, baseline")
   elseif lc == "order" and arg ~= "" then
     settings.sources = table.concat(P.Order(arg), ",")
     Core.Print("price order: " .. table.concat(P.Order(settings.sources), " > "))
@@ -410,10 +542,11 @@ SlashCmdList.KENNYDWARFEXPLORERSBIBLE = function(msg)
     if ns.DropShare then ns.DropShare.OpenImport() end
   elseif lc == "report" then
     Core.ShowReport({ "schema " .. tostring(db.schema), "recipes " .. #M.recipes .. " (data " .. tostring(D.build) .. ")", "price sources: " .. table.concat(P.Installed(), ", "), "mobs with learned drops: " .. M.CountKeys(db.drops),
-      "shared drop sources: " .. M.CountKeys(db.dropShares), "order " .. settings.sources })
+      "shared drop sources: " .. M.CountKeys(db.dropShares), "order " .. settings.sources,
+      "characters " .. M.CountKeys(db.alts), "vendors " .. M.CountKeys(db.vendors.list), "shopping " .. M.CountKeys(db.shopping.items) })
   elseif lc == "help" then
-    Core.Print("/deb [item, link or name] | sources | prefer <id> | order a,b,c | tooltip | altclick | export | import | report")
-    Core.Print("source ids: pricelog, auctionator, tsm, auctioneer, scan")
+    Core.Print("/deb [item, link or name] | materials | shop | seeds | alts | sources | prefer <id> | order a,b,c | tooltip | altclick | export | import | report")
+    Core.Print("source ids: pricelog, auctionator, tsm, auctioneer, scan, baseline (always last)")
   else
     local id = M.ParseItem(msg)
     if id and M.Open then M.Open(id) else Core.Print("no recipe uses '" .. msg .. "'. /deb help") end

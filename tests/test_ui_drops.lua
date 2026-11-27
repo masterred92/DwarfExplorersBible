@@ -28,7 +28,7 @@ local RM, Dr = ns.RM, ns.Drops
 local db = KennyDwarfExplorersBibleDB
 
 -- 1. SavedVariables: migration and filter defaults ----------------------------------------------
-M.check(db.schema == 3 and type(db.drops) == "table" and type(db.dropKills) == "table" and type(db.dropShares) == "table" and type(db.dropShareId) == "string", "1.1.0 save migrated to schema 3 with drop tables and share id")
+M.check(db.schema == 4 and type(db.drops) == "table" and type(db.dropKills) == "table" and type(db.dropShares) == "table" and type(db.dropShareId) == "string", "1.1.0 save migrated to schema 4 with drop tables and share id")
 M.check(db.settings.tooltip == false, "existing settings kept")
 local s = RM.Settings()
 M.check(s.filterMine == true and s.filterKnown == false and s.filterPriced == false, "only 'My professions' ticked at first")
@@ -43,7 +43,7 @@ M.check(db.settings.filterKnown == nil and db.settings.filterMine == nil, "back 
 -- 2. Filters ---------------------------------------------------------------------------------
 local all = RM.UsesOf(2589)
 M.check(#RM.FilterList(all, s) == #all, "no profession seen yet: 'My professions' lets everything through")
-local char = db.chars["TestRealm-Horde-Kenny"]
+local char = db.alts["TestRealm-Horde-Kenny"]
 char.skills.Tailoring = 50
 local mine = RM.FilterList(all, s)
 local onlyTailoring = #mine > 0

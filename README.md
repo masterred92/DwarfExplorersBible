@@ -1,6 +1,6 @@
 <p align="center"><img src="media/logo.png" alt="Dwarf Explorer's Bible logo" width="200"></p>
 
-# Dwarf Explorer's Bible (WoW: Forever) v1.2.1
+# Dwarf Explorer's Bible (WoW: Forever) v1.3.0
 
 [![Tests](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml/badge.svg)](https://github.com/masterred92/DwarfExplorersBible/actions/workflows/tests.yml) [![WoW: Forever](https://img.shields.io/badge/WoW%3A%20Forever-Interface%2016001-c8a165)](https://github.com/masterred92/DwarfExplorersBible/blob/main/DwarfExplorersBible.toc) [![Release](https://img.shields.io/github/v/release/masterred92/DwarfExplorersBible?label=release)](https://github.com/masterred92/DwarfExplorersBible/releases) [![License: MIT](https://img.shields.io/github/license/masterred92/DwarfExplorersBible)](https://github.com/masterred92/DwarfExplorersBible/blob/main/LICENSE)
 
@@ -12,6 +12,15 @@
 - **Follow the chain:** the chain strip (from recipe data, not your page history) shows this material, the recipe you point at and that result's most profitable next step; before you point at one, it shows this material's own most profitable chain. It stays on the last row you pointed at. Click a row (or a step in the strip) to open that item. Back and the breadcrumb walk the chain back. "Made from" flips to the recipes that create the item.
 - **Drops from kills:** loot a mob's corpse and the addon counts the trade goods in it (once per corpse). After 20 kills of a mob (yours, plus any you import or receive from other Dwarf Explorer's Bible users in your party or guild), its tooltip and the material page's "Drops from" section show the drop rate, labelled "from N kills"; until then its tooltip says "Learning drops: N of 20 kills". There is no bundled loot database. Export and Import buttons (and `/deb export` / `/deb import`) copy a drop string you can paste in Discord or to another player; the addon also shares your own counts automatically with party and guild members who use it, once you are out of combat.
 - **Tooltip line:** "Used in N recipes (Dwarf Explorer's Bible)", with its price and source. Herb seeds show their camp uses (plant at a Greenhouse, hybridize at a Seed Hybridizer, which can fail since the Nov 19 hotfix; Scarce Herb Seeds can only be planted), Black Lotus says a vendor sells it, and the potion copies that can't go into recipes say so.
+- **Four tabs:** Materials, Shopping, Seeds and Alts (`/deb`, `/deb shop`, `/deb seeds`, `/deb alts`).
+- **Bags and bank:** counts per character (the bank is read while it's open and remembered). Tooltips say "You have 6 (2 bags, 4 bank)"; hold Shift for your alts' counts and the price's age.
+- **Shopping list:** add a recipe's missing mats or single items. Each line is sorted into Vendor (grouped by remembered merchant, with a copper subtotal), Grab from Alt or AH. With the Auction House open, clicking a line types its name into the AH search and runs it; nothing is ever bought for you. A line with no known price says so instead of counting as 0g.
+- **Alts:** who can craft a recipe and who has the mats, across your characters on this realm.
+- **Make now and Best skill-up:** show only what your bags and bank can craft now (optionally with your alts' mats), or sort by orange, yellow, green and cheapest per expected skill point.
+- **Seeds:** herb seeds, the Greenhouse and the Seed Hybridizer in your bags, what each seed is reported to grow into, and whether you're ready to plant. Information and a bag highlight only.
+- **Buy all vs mats in bags:** profit if you buy every reagent, and out-of-pocket profit using what you already hold.
+- **Remembered vendors:** every merchant you open is remembered (name, zone, subzone, crafting goods, price, limited stock). Merchants in your zone come first.
+- **Farm here / nearest spot:** "Farm here: <zone> (<mob>, <rate seen>%)", "Mine here: <zone>" or "Nearest: <zone> (mine)", built only from what you (and Bible users you share with) have seen: counted mob drops and their zones, your gathering, and merchants.
 - **LDB launcher** for Titan Panel, ChocolateBar and other broker displays.
 
 <p align="center"><img src="media/screenshots/banner.png" alt="Dwarf Explorer's Bible banner" width="560"></p>
@@ -27,9 +36,18 @@ Dwarf Explorer's Bible reads prices from whichever price addon you already use. 
 | [TradeSkillMaster](https://tradeskillmaster.com) | `TSM_API.GetCustomPriceValue("DBMarket")`, then `DBMinBuyout` | Not yet; works when it ships one |
 | [Auctioneer (Forever)](https://www.curseforge.com/wow/addons/auctioneer-forever) | `AucAdvanced.API.GetMarketValue` | Yes (4.0.0) |
 | Dwarf Explorer's Bible scan | prices it sees in AH searches **you** do | Always on |
+| Forever baseline (optional) | a bundled `BaselinePrices.lua` snapshot with its capture date, when the release ships one | Always last; any live source beats it |
 
 No price addon? It still works: every AH search you make (browse or commodity) is cached. It never searches on its own.
 Change the order with `/deb prefer auctionator` or `/deb order tsm,auctionator,scan`; `/deb sources` shows the order and what's installed.
+
+On the buy side a vendor's price wins over a dearer AH price. A price that's missing stays missing: profit shows as unknown, never as 0g.
+
+## Sharing sightings
+In a party, raid or guild, Dwarf Explorer's Bible users also share the merchants they've opened and where they gathered herbs, ore, leather and fish (a separate hidden addon channel, `DEBDATA`, so 1.2.1 users are unaffected). The same rules as drop sharing apply: only out of combat, only party, raid, guild and instance chat, small throttled messages, and each source stays tied to the player who first sent it. Received text is checked and cleaned, and at most 30 sources are kept. `/deb export` shows your drop string (line 1, readable by 1.2.1) and your sightings string (line 2); `/deb import` takes either line or both.
+
+## Seeds (reported)
+What a planted seed grows into is not in the game files (planting summons a crop; the server decides the loot). The Seeds tab uses what [Icy Veins reported](https://www.icy-veins.com/wow-forever/news/greenhouse-blueprint-found-how-herbalism-seeds-work-in-wow-forever/): Commonplace Herb Seeds grow Peacebloom or Earthroot, Uncommon grow Silverleaf or Kingsblood, Scarce grow Ghost Mushroom. Unusual Herb Seeds have no report yet. Hybridizing is decided by the server and can fail.
 
 ## Where the recipes come from
 The recipe list (2,091 recipes across Alchemy, Blacksmithing, Comprehension, Cooking, Enchanting items, Engineering, First Aid, Fishing, Herbalism, Leatherworking, Mining, Poisons, Skinning and Tailoring) comes from **WoW: Forever's own client tables plus the server hotfixes Blizzard has pushed on top of them** (build 1.60.1.71139, via [wago.tools](https://wago.tools)), so it has Forever's reagents and skill levels, not vanilla's: for example Minor Healing Potion in Forever uses an Empty Vial, Mild Spices and Peaceblooms, and the Tanning Rack turns grey at 125 since the Nov 9 hotfix. `tools/fetch_hotfixes.py` and `tools/gen_data.py` regenerate it after a patch or hotfix. Recipes whose item Blizzard still keeps out of the game files (for example the Artisan's Tier Fel Leather pieces) are listed under the recipe's name and marked "Not released yet". The row tooltip also lists any tool a recipe needs in your bags. Skill levels are where a recipe turns yellow and grey, coloured against your own skill. Each time you open a profession window the addon also records what you know and adds any recipe the bundled list doesn't have. A few camp changes Blizzard made on the server only (the Nov 19 hotfix: Hybridize Seeds can fail, Scarce Herb Seeds can't be hybridized) are applied from Blizzard's hotfix notes; Blizzard hasn't published the failure chance, so the addon only says it can fail.
@@ -45,7 +63,7 @@ You can share those counts. **Export Drops** (or `/deb export`) opens a window w
 Reverse lookups exist ([Recipe Master by BrenoLudgero](https://www.curseforge.com/wow/addons/recipe-master), ATT, Auctionator's crafting info, TSM's crafting tab, CraftSim on retail, Crafting Dictionary on retail), but they either track which recipes you're missing, price recipes you already know, or start from the recipe rather than the material. This one starts from the material, prices every option from your own AH addon, and lets you walk the chain material > intermediate > final, like the Guide in Terraria.
 
 ## Commands
-`/deb` (or `/craftguide`) open · `/deb <name, link or itemID>` · `sources` · `prefer <id>` · `order a,b,c` · `tooltip` · `altclick` · `export` · `import` · `report` · `help`. Source ids: `pricelog`, `auctionator`, `tsm`, `auctioneer`, `scan`.
+`/deb` (or `/craftguide`) open · `/deb <name, link or itemID>` · `materials` · `shop` (`shop <item> [count]`, `shop clear`, `shop cleardone`) · `seeds` · `alts` · `sources` · `prefer <id>` · `order a,b,c` · `tooltip` · `altclick` · `export` · `import` · `report` · `help`. Source ids: `pricelog`, `auctionator`, `tsm`, `auctioneer`, `scan`.
 
 ## Download
 - **Wago Addons:** [Dwarf Explorer's Bible on Wago](https://addons.wago.io/addons/dwarfexplorersbible)

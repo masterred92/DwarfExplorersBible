@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.0
+- Four tabs: Materials, Shopping, Seeds and Alts, with `/deb materials`, `/deb shop`, `/deb seeds` and `/deb alts`.
+- Bag and bank counts per character. Bags are read once after a burst of bag changes and never in combat; the bank is read while it's open and remembered. Only items the addon has a use for are saved.
+- Shopping list: add a recipe's missing mats or single items, mark lines done, Clear done, Clear all. Lines are split into Vendor (grouped by merchant with a copper subtotal), Grab from Alt and AH, with an estimated cost. With the AH open, a click on a line searches for it at the AH. A line without a price says so instead of counting as 0g.
+- Alts: who can craft a recipe and who has the mats (filterable), for your characters on the same realm. Only same-faction alts count as mailable.
+- "Make now" filter (your bags and bank, optionally with your alts) and "Best skill-up" sort (orange, yellow, green; then cheapest per expected skill point, using the usual Classic estimate).
+- Seeds tab: herb seeds, the Greenhouse and the Seed Hybridizer in your bags and bank, what each seed grows into (reported by Icy Veins), which recipes use it, the AH value of the crop, and an All / Ready to plant filter. Information and bag highlight only.
+- Profit: buy-all vs mats-in-bags lines. A missing price makes the result incomplete (no profit figure) instead of 0g, and the price's age is shown. A vendor price beats a dearer AH price.
+- Remembered vendors: each merchant you open is kept with its zone, subzone and crafting goods (price, limited stock); at most 60 merchants and 150 goods each. Merchants in your zone are listed first, then the nearest.
+- Farm here / nearest spot: where to get a material, starting with your zone (counted mob drops, your own gathering, merchants), then the nearest zones that suit your level. Zones come from the client's map tables (1.60.1.71139 via wago.tools), level ranges from the client. No bundled mob, node or coordinate lists.
+- Sharing: vendor and gathering sightings are shared with other Bible users in your party, raid or guild over a separate addon channel (`DEBDATA`), with the same limits as drop sharing. The 1.2.1 drop channel and format are unchanged. `/deb export` adds a second line with your sightings; `/deb import` takes either line or both.
+- Drop sharing: senders are matched by name and realm (realm spaces, hyphens and case ignored), so a player with the same name on another realm can't overwrite a source, and your own messages are recognised across realm name forms.
+- Optional "Forever baseline" price source, always last; any live source beats it.
+- Tooltips are one or two lines; hold Shift for price age, alt counts and the alt-click hint.
+- Derived lists are cached and rebuilt only after a change (never in combat).
+
 ## 1.2.1
 - Recipe data rebuilt from client build 1.60.1.71139 (via wago.tools), plus that build's server hotfixes. 2,091 recipes (was 2,090).
 - Pattern: Centaur Hoofwarmers is now in the recipe list (Leatherworking, yellow/grey at 170/180; 12 Thick Leather and 2 Heavy Silken Thread), after the Nov 23 hotfix made the pattern learnable.

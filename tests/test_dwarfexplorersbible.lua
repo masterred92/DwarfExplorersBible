@@ -58,7 +58,7 @@ M.check(RM.Skill("First Aid") == 40, "skill level stored")
 M.check(RM.Difficulty(found[1251].r) == "yellow", "difficulty from Forever's yellow/grey levels (30/60, you 40)")
 M.check(RM.byProduct[990001] and RM.byProduct[990001][1].origin == "scan", "recipe missing from data added from your own window")
 linked = true
-KennyDwarfExplorersBibleDB.chars["TestRealm-Horde-Kenny"].learned[2996] = nil
+KennyDwarfExplorersBibleDB.alts["TestRealm-Horde-Kenny"].learned[2996] = nil
 C_TradeSkillUI.GetFilteredRecipeIDs = function() return { 1 } end
 C_TradeSkillUI.GetRecipeSchematic = function() return { outputItemID = 2996, reagentSlotSchematics = {} } end
 M.fire("TRADE_SKILL_SHOW"); M.advance(1)
@@ -96,7 +96,7 @@ AucAdvanced = { API = { GetMarketValue = function(link) assert(type(link) == "nu
 SlashCmdList.KENNYDWARFEXPLORERSBIBLE("order auctioneer,scan")
 p, label = RM.Price(2589)
 M.check(p == 32 and label == "Auctioneer", "Auctioneer source")
-M.check(P.Order(RM.Settings().sources)[2] == "scan" and #P.Order(RM.Settings().sources) == 5, "order keeps all sources")
+M.check(P.Order(RM.Settings().sources)[2] == "scan" and #P.Order(RM.Settings().sources) == 6, "order keeps all sources")
 -- PriceLog
 KennyPriceLog = { GetLatest = function(item) if item == 2589 then return { p = 33, t = 1 } end end }
 SlashCmdList.KENNYDWARFEXPLORERSBIBLE("prefer pricelog")

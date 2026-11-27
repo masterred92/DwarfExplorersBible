@@ -169,14 +169,18 @@ function S.Import(text, silent, sender)
   return ok, kind
 end
 
+-- Line 1: the DEB1 drop string (1.2.1 reads it alone). Line 2, when you have any: the DEB2 vendor and gathering
+-- sightings string (ShareData.lua). 1.3.0 imports either line or both.
 function S.OpenExport()
-  local text = S.EncodePersonal() or ""
+  local text, snap = S.EncodePersonal() or "", nil
+  if ns.ShareData then text, snap = ns.ShareData.ExportText() end
   local n = 0
   if Dr and Dr.PersonalSnapshot then for _ in pairs(Dr.PersonalSnapshot().kills) do n = n + 1 end end
-  return Core.ShowText("DropExport",
-    n > 0 and ("Drop data (%d mob%s): Ctrl+C to copy"):format(n, n == 1 and "" or "s")
-      or "Drop data: you haven't looted any mobs yet. Ctrl+C to copy.",
-    text)
+  local title = n > 0 and ("Drop data (%d mob%s)"):format(n, n == 1 and "" or "s") or "Drop data: you haven't looted any mobs yet"
+  if snap and not ns.ShareData.IsEmpty(snap) then
+    title = title .. (" + sightings (%d vendor%s, %d gathering)"):format(#snap.vendors, #snap.vendors == 1 and "" or "s", #snap.gather)
+  end
+  return Core.ShowText("DropExport", title .. ". Ctrl+C to copy" .. (snap and not ns.ShareData.IsEmpty(snap) and " (1.2.1 reads line 1 only)" or ""), text)
 end
 
 function S.OpenImport()
@@ -184,7 +188,8 @@ function S.OpenImport()
     actionLabel = "Import",
     noHighlight = true,
     action = function(s, w)
-      local ok = S.Import(s, false)
+      local ok
+      if ns.ShareData then ok = ns.ShareData.ImportText(s, false) else ok = S.Import(s, false) end
       if ok and w then w:Hide() end
     end,
   })
@@ -193,7 +198,7 @@ end
 -- Chunking / comms ----------------------------------------------------------------------
 function S.BuildChunks(payload)
   payload = payload or ""
-  local hash = payload:match("^DEB1:[%w]+:(%x+):") or S.Hash(payload)
+  local hash = payload:match("^DEB%d:[%w]+:(%x+):") or S.Hash(payload)
   -- Reserve "D:<hash>:<iii>:<nnn>:" so a 3-digit index always fits in MAX_CHUNK.
   local overhead = #("D:" .. hash .. ":000:000:")
   local size = S.MAX_CHUNK - overhead
@@ -221,7 +226,8 @@ local function startPump()
     end
     local item = table.remove(queue, 1)
     -- All four arguments are plain strings this file built (SecretArguments = "NotAllowed").
-    local result = C_ChatInfo.SendAddonMessage(S.PREFIX, item.msg, item.chatType)
+    -- One queue for both prefixes (DEBDROPS drops, DEBDATA sightings from ShareData.lua) so the throttle covers both.
+    local result = C_ChatInfo.SendAddonMessage(item.prefix or S.PREFIX, item.msg, item.chatType)
     if result == S.RESULT_THROTTLE or result == S.RESULT_CHANNEL_THROTTLE or result == S.RESULT_LOCKDOWN then
       table.insert(queue, 1, item)
       pending = true
@@ -234,16 +240,20 @@ local function startPump()
     if #queue > 0 and C_Timer and C_Timer.After then
       pumping = true
       C_Timer.After(S.SEND_GAP, step)
-    elseif pending then
-      S.Flush()
+    else
+      if pending then S.Flush() end
+      local SD = ns.ShareData
+      if SD and SD.Pending() and #queue == 0 then SD.Flush() end
     end
   end
   step()
 end
 
-function S.Enqueue(chatType, msg)
+-- prefix: nil for DEBDROPS (this file), or another registered prefix (ShareData's DEBDATA).
+function S.Enqueue(chatType, msg, prefix)
   if type(chatType) ~= "string" or type(msg) ~= "string" or #msg > S.MAX_CHUNK then return end
-  queue[#queue + 1] = { chatType = chatType, msg = msg }
+  if not S.ALLOWED_CHANNELS[chatType] then return end
+  queue[#queue + 1] = { chatType = chatType, msg = msg, prefix = prefix }
 end
 
 function S.QueueSize() return #queue end
@@ -251,31 +261,31 @@ function S.ClearQueue() queue = {} end
 
 -- Drop queued data chunks for this channel (and announces for any other hash) so a newer
 -- snapshot replaces the old one instead of stacking behind it.
-function S.PurgeQueuedData(chatType, keepHash)
+function S.PurgeQueuedData(chatType, keepHash, prefix)
   local kept = {}
   for i = 1, #queue do
     local item = queue[i]
     local dh = item.msg:match("^D:(%x+):")
     local ah = item.msg:match("^A:[%w]+:(%x+)$")
-    local stale = item.chatType == chatType and (dh or (ah and ah ~= keepHash))
+    local stale = item.prefix == prefix and item.chatType == chatType and (dh or (ah and ah ~= keepHash))
     if not stale then kept[#kept + 1] = item end
   end
   queue = kept
 end
 
-function S.DataInFlight(chatType)
+function S.DataInFlight(chatType, prefix)
   for i = 1, #queue do
-    if (not chatType or queue[i].chatType == chatType) and queue[i].msg:match("^D:") then return true end
+    if queue[i].prefix == prefix and (not chatType or queue[i].chatType == chatType) and queue[i].msg:match("^D:") then return true end
   end
   return false
 end
 
-function S.QueueData(chans, payload, hash)
+function S.QueueData(chans, payload, hash, prefix)
   local chunks = S.BuildChunks(payload)
   for _, ch in ipairs(chans) do
-    S.PurgeQueuedData(ch, hash)
-    lastDataByChannel[ch] = { hash = hash, at = C.Clock() }
-    for i = 1, #chunks do S.Enqueue(ch, chunks[i]) end
+    S.PurgeQueuedData(ch, hash, prefix)
+    if not prefix then lastDataByChannel[ch] = { hash = hash, at = C.Clock() } end
+    for i = 1, #chunks do S.Enqueue(ch, chunks[i], prefix) end
   end
 end
 
@@ -336,12 +346,13 @@ local function expireAssemblies()
   end
 end
 
-local function handleData(sender, hash, i, n, data)
+-- Collects D chunks per sender + hash (+ prefix) and calls done(payload) once all n arrived. Shared with ShareData.
+function S.Assemble(sender, hash, i, n, data, done, prefix)
   i, n = tonumber(i), tonumber(n)
   if not (sender and hash and i and n and data) then return end
   if n < 1 or n > 400 or i < 1 or i > n or #data > S.MAX_CHUNK then return end
   expireAssemblies()
-  local key = sender .. ":" .. hash
+  local key = (prefix or S.PREFIX) .. ":" .. sender .. ":" .. hash
   local rec = assembling[key]
   if not rec or rec.n ~= n then
     rec = { hash = hash, n = n, parts = {}, at = C.Clock(), count = 0 }
@@ -356,7 +367,11 @@ local function handleData(sender, hash, i, n, data)
     bits[j] = rec.parts[j]
   end
   assembling[key] = nil
-  S.Import(table.concat(bits), true, sender)
+  done(table.concat(bits))
+end
+
+local function handleData(sender, hash, i, n, data)
+  S.Assemble(sender, hash, i, n, data, function(text) S.Import(text, true, sender) end)
 end
 
 local function maybeQuery(channel, sid, hash)
@@ -385,9 +400,19 @@ local function maybeAnswer(channel, wantSid, wantHash)
   startPump()
 end
 
-local function shortName(s)
-  if type(s) ~= "string" or s == "" then return nil end
-  return (s:match("^([^%-]+)") or s):lower()
+-- Self-echo check, cross-realm safe: you are "Name-YourRealm" (UnitFullName, realm normalized); a sender with the
+-- same name on another realm is someone else, and a bare "Name" means your own realm.
+function S.Me()
+  local name, realm
+  if UnitFullName then name, realm = UnitFullName("player") end
+  name, realm = C.Safe(name), C.Safe(realm)
+  if type(name) ~= "string" or name == "" then name = UnitName and C.Safe(UnitName("player")) end
+  if type(name) ~= "string" or name == "" then return nil end
+  return Dr.NormalizeSender(name .. ((type(realm) == "string" and realm ~= "") and ("-" .. realm) or ""))
+end
+function S.IsSelf(sender)
+  local me, who = S.Me(), Dr.NormalizeSender(sender)
+  return me ~= nil and who ~= nil and me == who
 end
 
 function S.OnAddonMessage(prefix, text, channel, sender)
@@ -395,8 +420,7 @@ function S.OnAddonMessage(prefix, text, channel, sender)
   if prefix ~= S.PREFIX or type(text) ~= "string" or text == "" then return end
   if type(sender) ~= "string" or sender == "" then return end
   if type(channel) ~= "string" or not S.ALLOWED_CHANNELS[channel:upper()] then return end
-  local me = UnitName and C.Safe(UnitName("player"))
-  if me and shortName(sender) == shortName(me) then return end
+  if S.IsSelf(sender) then return end
   local kind, a = text:match("^([ADQ]):(.*)$")
   if not kind then return end
   if kind == "A" then

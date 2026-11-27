@@ -11,4 +11,6 @@ read_globals = { "C_Item", "C_MerchantFrame", "GetMerchantNumItems", "GetMerchan
   "hooksecurefunc", "HandleModifiedItemClick", "IsAltKeyDown", "C_ChatInfo", "IsInGroup", "IsInRaid", "IsInGuild", "InCombatLockdown",
   "GetNumLootItems", "GetLootSlotInfo", "GetLootSlotLink", "GetLootSlotType", "GetLootSourceInfo", "IsFishingLoot", "UnitGUID", "UnitIsDead",
   "FauxScrollFrame_Update", "FauxScrollFrame_GetOffset", "FauxScrollFrame_SetOffset", "FauxScrollFrame_OnVerticalScroll",
+  "IsShiftKeyDown", "UnitFullName", "GetNormalizedRealmName", "GetSubZoneText", "C_Map", "UnitLevel", "NUM_CHARACTER_BANK_SLOTS",
+  "AuctionHouseFrame", "unpack",
   "KennyPriceLog", "LibStub", "Auctionator", "TSM_API", "AucAdvanced" }

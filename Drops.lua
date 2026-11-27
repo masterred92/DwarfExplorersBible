@@ -24,7 +24,7 @@ local fromTarget = false   -- the last window read fell back to your dead target
 
 -- Saved data: drops[creatureID][itemID] = { loots = kills counted, seen = kills it dropped in }; kills[creatureID] =
 -- corpses counted; names[creatureID] = mob name (learned from your target or the mob tooltip); done = recent GUIDs.
-local function invalidateCombined() combinedCache = nil end
+local function invalidateCombined() combinedCache = nil; if ns.Cache then ns.Cache.Bump() end end
 function L.InvalidateCombined() invalidateCombined() end
 
 function L.NewShareId()
@@ -40,6 +40,7 @@ function L.Attach(d)
   db.mobNames = type(db.mobNames) == "table" and db.mobNames or {}
   db.dropDone = type(db.dropDone) == "table" and db.dropDone or {}
   db.dropShares = type(db.dropShares) == "table" and db.dropShares or {}
+  db.mobZones = type(db.mobZones) == "table" and db.mobZones or {}
   if type(db.dropShareId) ~= "string" or not db.dropShareId:match("^[%w]+$") or #db.dropShareId < 6 or #db.dropShareId > 32 then
     db.dropShareId = L.NewShareId()
   end
@@ -164,6 +165,21 @@ local function retire(guids)
   end
 end
 
+-- Zones you killed a mob in (for Where to farm): mobZones[creatureID][zone] = kills there, MAX_MOB_ZONES per mob.
+L.MAX_MOB_ZONES = 4
+function L.NoteZone(cid, zone)
+  if not (db and cid and type(zone) == "string" and zone ~= "") then return end
+  local z = db.mobZones[cid]
+  if not z then z = {}; db.mobZones[cid] = z end
+  if not z[zone] then
+    local n, low, lowN = 0, nil, nil
+    for k, v in pairs(z) do n = n + 1; if not lowN or v < lowN then low, lowN = k, v end end
+    if n >= L.MAX_MOB_ZONES then z[low] = nil end
+  end
+  z[zone] = (z[zone] or 0) + 1
+end
+function L.MobZones(cid) return db and db.mobZones[cid] or nil end
+
 -- Counts each creature corpse once. A newly seen item starts at the mob's kill count: those earlier corpses were
 -- read in full and didn't have it.
 function L.Record(corpses)
@@ -181,6 +197,7 @@ function L.Record(corpses)
         if not rec[id] then rec[id] = { loots = kills, seen = 0 } end
         rec[id].seen = rec[id].seen + 1
       end
+      L.NoteZone(cid, C.GetZone())
       counted = counted + 1
     end
   end
@@ -202,7 +219,11 @@ function L.OnLootOpened(isFromItem)
   if C.Safe(isFromItem) ~= false and isFromItem ~= nil then return 0, "item" end
   if IsFishingLoot then
     local fishing = IsFishingLoot()
-    if C.IsSecret(fishing) or fishing then return 0, "fishing" end
+    if C.IsSecret(fishing) then return 0, "fishing" end
+    if fishing then
+      if ns.Where then ns.Where.OnGatherLoot("fish") end
+      return 0, "fishing"
+    end
   end
   local recent = lastCast and C.Clock() - lastCast.at <= L.GATHER_WINDOW and lastCast.kind
   -- Pick Pocket: the mob is still alive, so leave it unmarked and count its corpse when you kill and loot it.
@@ -218,6 +239,8 @@ function L.OnLootOpened(isFromItem)
     -- corpse is only your dead target (no source info), retire it only after a skinning-type cast: after Opening the
     -- window is a chest or node and the target's own loot is still to come.
     if not fromTarget or recent == "skin" then retire(corpses) end
+    local gk = ns.Zones and ns.Zones.gatherSpells[lastCast.spell or -1]
+    if gk and ns.Where then ns.Where.OnGatherLoot(gk) end
     return 0, "gathering"
   end
   learnTargetName(corpses)
@@ -232,7 +255,7 @@ end
 function L.OnCast(unit, _, spellID)
   if unit ~= "player" or C.IsSecret(spellID) then return end
   local kind = ns.Data and ns.Data.lootCasts and ns.Data.lootCasts[C.SafeNumber(spellID) or -1]
-  if kind then lastCast = { at = C.Clock(), kind = kind } end
+  if kind then lastCast = { at = C.Clock(), kind = kind, spell = C.SafeNumber(spellID) } end
 end
 
 -- Personal snapshot only (what you looted yourself). Used for export and sync; never includes dropDone or imports.
@@ -294,10 +317,33 @@ end
 
 L.MAX_SHARES = 50
 
--- Short name, lower-cased, with any -Realm suffix removed (CHAT_MSG_ADDON senders are Name-Realm).
-function L.NormalizeSender(sender)
-  if type(sender) ~= "string" or sender == "" then return nil end
-  return (sender:match("^([^%-]+)") or sender):lower()
+-- Cross-realm safe sender key: "name-realm", lower-cased, realm without spaces, hyphens or apostrophes
+-- (CHAT_MSG_ADDON senders are "Name-Realm" for other realms and may be a bare "Name" for your own).
+-- A bare name gets your own realm (GetNormalizedRealmName, else GetRealmName).
+function L.MyRealm()
+  local r = GetNormalizedRealmName and C.Safe(GetNormalizedRealmName())
+  if type(r) ~= "string" or r == "" then r = GetRealmName and C.Safe(GetRealmName()) end
+  return type(r) == "string" and r or ""
+end
+local function normRealm(r) return (tostring(r or ""):gsub("[%s%-']", "")):lower() end
+function L.NormalizeSender(sender, myRealm)
+  if type(sender) ~= "string" then return nil end
+  sender = sender:gsub("^%s+", ""):gsub("%s+$", "")
+  if sender == "" then return nil end
+  local name, realm = sender:match("^([^%-]+)%-(.+)$")
+  if not name then name, realm = sender, nil end
+  realm = normRealm(realm)
+  if realm == "" then realm = normRealm(myRealm or L.MyRealm()) end
+  return name:lower() .. (realm ~= "" and ("-" .. realm) or "")
+end
+-- Same player? Two keys from NormalizeSender, or a short name saved by 1.2.x (no realm: name part compared).
+function L.SameSender(a, b)
+  if not (a and b) then return false end
+  if a == b then return true end
+  if not a:find("-", 1, true) or not b:find("-", 1, true) then
+    return a:match("^([^%-]+)") == b:match("^([^%-]+)")
+  end
+  return false
 end
 
 local function shareCount()
@@ -331,7 +377,7 @@ function L.ApplyShare(sourceId, snap, hash, sender)
   local existing = db.dropShares[sourceId]
   if existing and hash and existing.hash == hash then return true, "same" end
   local norm = sender and L.NormalizeSender(sender)
-  if norm and existing and existing.sender and existing.sender ~= norm then
+  if norm and existing and existing.sender and not L.SameSender(existing.sender, norm) then
     return false, "sender"
   end
   if not existing then pruneShares() end

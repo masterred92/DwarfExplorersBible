@@ -2,7 +2,7 @@
 ## Title: Dwarf Explorer's Bible
 ## Notes: Pick a material and see everything it crafts into, with auction prices, profit and crafting chains.
 ## Author: Kenny
-## Version: 1.2.1
+## Version: 1.3.0
 ## SavedVariables: KennyDwarfExplorersBibleDB
 ## OptionalDeps: PriceLog, Auctionator, TradeSkillMaster, Auc-Advanced, LibDataBroker-1.1
 ## X-License: MIT
@@ -13,10 +13,21 @@
 
 Compat.lua
 Core.lua
+Cache.lua
 Data.lua
+Zones.lua
 Prices.lua
 DwarfExplorersBible.lua
+Inventory.lua
+Alts.lua
+Vendors.lua
+Where.lua
+Planner.lua
+Shopping.lua
+Seeds.lua
+Nav.lua
 Drops.lua
 DropShare.lua
+ShareData.lua
 UI.lua
 Broker.lua
