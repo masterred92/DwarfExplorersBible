@@ -8,7 +8,7 @@ read_globals = { "C_Item", "C_MerchantFrame", "GetMerchantNumItems", "GetMerchan
   "CreateFrame", "UIParent", "GameTooltip", "ItemRefTooltip", "TooltipDataProcessor", "Enum", "UISpecialFrames", "tinsert",
   "GetMoneyString", "GetMoney", "GetTime", "GetRealZoneText", "GetBuildInfo", "GetLocale", "GetRealmName", "UnitName",
   "UnitFactionGroup", "UnitAffectingCombat", "issecretvalue", "NUM_BAG_SLOTS", "NUM_TOTAL_EQUIPPED_BAG_SLOTS", "time", "date",
-  "hooksecurefunc", "HandleModifiedItemClick", "IsAltKeyDown",
+  "hooksecurefunc", "HandleModifiedItemClick", "IsAltKeyDown", "C_ChatInfo", "IsInGroup", "IsInRaid", "IsInGuild", "InCombatLockdown",
   "GetNumLootItems", "GetLootSlotInfo", "GetLootSlotLink", "GetLootSlotType", "GetLootSourceInfo", "IsFishingLoot", "UnitGUID", "UnitIsDead",
   "FauxScrollFrame_Update", "FauxScrollFrame_GetOffset", "FauxScrollFrame_SetOffset", "FauxScrollFrame_OnVerticalScroll",
   "KennyPriceLog", "LibStub", "Auctionator", "TSM_API", "AucAdvanced" }

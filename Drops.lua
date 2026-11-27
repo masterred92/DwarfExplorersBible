@@ -3,7 +3,10 @@
 -- loots, targets or clicks anything. Every client value goes through the secret guards in Compat.lua: if the mob's
 -- GUID or any item in the window is hidden, the whole window is skipped, so a rate is never built from a partial look;
 -- every corpse GUID that could still be read is then marked done, so reopening it half-looted can't count it either.
--- No third-party loot data: everything shown comes from your own kills.
+-- No bundled loot database. Rates come from corpses you loot, plus drop strings you import
+-- or that other Dwarf Explorer's Bible users in your party or guild share with you.
+-- Shared counts are stored apart from your own and added together for display; the list of
+-- corpse GUIDs used to avoid double-counting (dropDone) is never shared.
 local _, ns = ...
 local C, Core, M = ns.Compat, ns.Core, ns.RM
 local L = {}
@@ -15,19 +18,35 @@ L.DONE_SIZE = 200       -- corpse GUIDs remembered (across /reload) so a corpse 
 local TRADE_GOODS = Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods or 7
 local SLOT_ITEM = Enum and Enum.LootSlotType and Enum.LootSlotType.Item or 1
 
-local db
+local db, combinedCache
 local lastCast = nil    -- { at = C.Clock(), kind = "skin" | "open" | "pickpocket" }, from your own UNIT_SPELLCAST_SUCCEEDED
 local fromTarget = false   -- the last window read fell back to your dead target (no GetLootSourceInfo answer)
 
 -- Saved data: drops[creatureID][itemID] = { loots = kills counted, seen = kills it dropped in }; kills[creatureID] =
 -- corpses counted; names[creatureID] = mob name (learned from your target or the mob tooltip); done = recent GUIDs.
+local function invalidateCombined() combinedCache = nil end
+function L.InvalidateCombined() invalidateCombined() end
+
+function L.NewShareId()
+  local t = (C.Now() or 0) % 4294967296
+  local r = (math.random(0, 65535) + (math.floor((C.Clock() or 0) * 1000) % 65536)) % 65536
+  return ("%08x%04x"):format(t, r)
+end
+
 function L.Attach(d)
   db = d
   db.drops = type(db.drops) == "table" and db.drops or {}
   db.dropKills = type(db.dropKills) == "table" and db.dropKills or {}
   db.mobNames = type(db.mobNames) == "table" and db.mobNames or {}
   db.dropDone = type(db.dropDone) == "table" and db.dropDone or {}
+  db.dropShares = type(db.dropShares) == "table" and db.dropShares or {}
+  if type(db.dropShareId) ~= "string" or not db.dropShareId:match("^[%w]+$") or #db.dropShareId < 6 or #db.dropShareId > 32 then
+    db.dropShareId = L.NewShareId()
+  end
+  invalidateCombined()
 end
+
+function L.SourceId() return db and db.dropShareId end
 
 local function str(v)
   v = C.Safe(v)
@@ -165,6 +184,7 @@ function L.Record(corpses)
       counted = counted + 1
     end
   end
+  if counted > 0 then invalidateCombined() end
   return counted
 end
 
@@ -174,7 +194,7 @@ local function learnTargetName(corpses)
   local guid = str(UnitGUID("target"))
   local cid = guid and corpses[guid] and L.CreatureID(guid)
   local name = cid and str(UnitName("target"))
-  if name then db.mobNames[cid] = name end
+  if name then db.mobNames[cid] = name; invalidateCombined() end
 end
 
 function L.OnLootOpened(isFromItem)
@@ -201,7 +221,9 @@ function L.OnLootOpened(isFromItem)
     return 0, "gathering"
   end
   learnTargetName(corpses)
-  return L.Record(corpses)
+  local n = L.Record(corpses)
+  if n > 0 and ns.DropShare and ns.DropShare.OnPersonalChange then ns.DropShare.OnPersonalChange() end
+  return n
 end
 
 -- Your own successful casts (registered for "player" only). Only the spells in Data.lootCasts (SpellEffect open
@@ -213,15 +235,132 @@ function L.OnCast(unit, _, spellID)
   if kind then lastCast = { at = C.Clock(), kind = kind } end
 end
 
-function L.MobName(cid) return (db and db.mobNames[cid]) or ("NPC " .. tostring(cid)) end
-function L.Kills(cid) return db and db.dropKills[cid] or 0 end
-function L.Label(n) return ("from your %d kills"):format(n) end
+-- Personal snapshot only (what you looted yourself). Used for export and sync; never includes dropDone or imports.
+function L.PersonalSnapshot()
+  local kills, drops, names = {}, {}, {}
+  for cid, n in pairs(db and db.dropKills or {}) do
+    if type(cid) == "number" and type(n) == "number" and n > 0 then kills[cid] = n end
+  end
+  for cid, rec in pairs(db and db.drops or {}) do
+    if type(cid) == "number" and type(rec) == "table" then
+      for id, e in pairs(rec) do
+        if type(id) == "number" and type(e) == "table" and type(e.seen) == "number" and type(e.loots) == "number"
+          and e.seen > 0 and e.loots > 0 then
+          drops[cid] = drops[cid] or {}
+          drops[cid][id] = { loots = e.loots, seen = e.seen }
+        end
+      end
+    end
+  end
+  for cid, name in pairs(db and db.mobNames or {}) do
+    if type(cid) == "number" and type(name) == "string" and name ~= "" then names[cid] = name end
+  end
+  return { kills = kills, drops = drops, names = names }
+end
+
+-- Combined view: your own counts plus every imported or synced source, summed by creature and item.
+-- Each source is stored under dropShares[sourceId] and replaced (not added again) when that same
+-- source is imported or received later, so pasting one string twice does not double the numbers.
+local function addCounts(dstKills, dstDrops, dstNames, src)
+  if type(src) ~= "table" then return end
+  for cid, n in pairs(src.kills or src.dropKills or {}) do
+    if type(cid) == "number" and type(n) == "number" then dstKills[cid] = (dstKills[cid] or 0) + n end
+  end
+  for cid, rec in pairs(src.drops or {}) do
+    if type(cid) == "number" and type(rec) == "table" then
+      dstDrops[cid] = dstDrops[cid] or {}
+      for id, e in pairs(rec) do
+        if type(id) == "number" and type(e) == "table" and type(e.seen) == "number" and type(e.loots) == "number" then
+          local cur = dstDrops[cid][id]
+          if not cur then dstDrops[cid][id] = { loots = e.loots, seen = e.seen }
+          else cur.loots = cur.loots + e.loots; cur.seen = cur.seen + e.seen end
+        end
+      end
+    end
+  end
+  for cid, name in pairs(src.names or src.mobNames or {}) do
+    if type(cid) == "number" and type(name) == "string" and name ~= "" and not dstNames[cid] then dstNames[cid] = name end
+  end
+end
+
+function L.Combined()
+  if combinedCache then return combinedCache end
+  local kills, drops, names = {}, {}, {}
+  addCounts(kills, drops, names, { kills = db and db.dropKills, drops = db and db.drops, names = db and db.mobNames })
+  for _, sh in pairs(db and db.dropShares or {}) do addCounts(kills, drops, names, sh) end
+  combinedCache = { kills = kills, drops = drops, names = names }
+  return combinedCache
+end
+
+L.MAX_SHARES = 50
+
+-- Short name, lower-cased, with any -Realm suffix removed (CHAT_MSG_ADDON senders are Name-Realm).
+function L.NormalizeSender(sender)
+  if type(sender) ~= "string" or sender == "" then return nil end
+  return (sender:match("^([^%-]+)") or sender):lower()
+end
+
+local function shareCount()
+  local n = 0
+  for _ in pairs(db and db.dropShares or {}) do n = n + 1 end
+  return n
+end
+
+-- Drop the oldest synced snapshots until there is room for one more (cap MAX_SHARES).
+local function pruneShares()
+  while shareCount() >= L.MAX_SHARES do
+    local oldest, oldestAt
+    for sid, sh in pairs(db.dropShares) do
+      local at = (type(sh) == "table" and sh.at) or 0
+      if not oldest or at < oldestAt then oldest, oldestAt = sid, at end
+    end
+    if not oldest then break end
+    db.dropShares[oldest] = nil
+  end
+end
+
+-- Replace this source's snapshot. Same source + same hash is a no-op (no double count).
+-- Never writes dropDone. Returns ok, kind ("added"/"replaced"/"same"/"own"/"empty"/"sender").
+-- sender, when given (addon comms), is bound to the source on first receipt; a different
+-- sender cannot later overwrite that snapshot.
+function L.ApplyShare(sourceId, snap, hash, sender)
+  if not db then return false, "not loaded" end
+  if type(sourceId) ~= "string" or sourceId == "" then return false, "empty" end
+  if sourceId == db.dropShareId then return false, "own" end
+  if type(snap) ~= "table" then return false, "empty" end
+  local existing = db.dropShares[sourceId]
+  if existing and hash and existing.hash == hash then return true, "same" end
+  local norm = sender and L.NormalizeSender(sender)
+  if norm and existing and existing.sender and existing.sender ~= norm then
+    return false, "sender"
+  end
+  if not existing then pruneShares() end
+  local kills, drops, names = {}, {}, {}
+  addCounts(kills, drops, names, snap)
+  db.dropShares[sourceId] = {
+    hash = hash, kills = kills, drops = drops, names = names,
+    at = (C.Now and C.Now()) or (C.Clock and C.Clock()) or 0,
+    sender = (existing and existing.sender) or norm,
+  }
+  invalidateCombined()
+  return true, existing and "replaced" or "added"
+end
+
+function L.MobName(cid)
+  if db and db.mobNames[cid] then return db.mobNames[cid] end
+  for _, sh in pairs(db and db.dropShares or {}) do
+    if sh.names and sh.names[cid] then return sh.names[cid] end
+  end
+  return "NPC " .. tostring(cid)
+end
+function L.Kills(cid) local c = L.Combined(); return c.kills[cid] or 0 end
+function L.Label(n) return ("from %d kills"):format(n) end
 function L.Percent(e) return math.floor(e.seen * 100 / e.loots + 0.5) end
 
--- Trade goods a mob drops, once you've counted MIN_LOOTS of its corpses, most likely first.
+-- Trade goods a mob drops, once MIN_LOOTS combined kills have been counted, most likely first.
 function L.RatesFor(cid)
   local out = {}
-  local rec = db and db.drops[cid]
+  local rec = L.Combined().drops[cid]
   for id, e in pairs(rec or {}) do
     if e.loots >= L.MIN_LOOTS and e.seen > 0 then out[#out + 1] = { item = id, loots = e.loots, seen = e.seen } end
   end
@@ -232,12 +371,14 @@ function L.RatesFor(cid)
   return out
 end
 
--- Mobs that dropped itemID. rows = those with MIN_LOOTS or more kills (most likely first); kills = all your counted
--- kills of every mob that has dropped it, shown or not (the UI's title counts only rows); learning = how many mobs
--- are still under the threshold.
+-- Mobs that dropped itemID. rows = those with MIN_LOOTS or more combined kills (most likely first); kills = all
+-- counted kills of every mob that has dropped it, shown or not (the UI's title counts only rows); learning = how
+-- many mobs are still under the threshold.
 function L.SourcesOf(itemID)
   local rows, kills, learning = {}, 0, 0
-  for cid, rec in pairs(db and db.drops or {}) do
+  local all = L.Combined()
+  -- Walk every cid that appears in combined drops.
+  for cid, rec in pairs(all.drops or {}) do
     local e = rec[itemID]
     if e and e.seen > 0 then
       kills = kills + e.loots
@@ -257,8 +398,8 @@ function L.AddUnitLines(tooltip, guid, name)
   local cid = L.CreatureID(guid)
   if not cid or not db then return end
   name = str(name)
-  if name then db.mobNames[cid] = name end
-  local kills = db.dropKills[cid] or 0
+  if name and db.mobNames[cid] ~= name then db.mobNames[cid] = name; invalidateCombined() end
+  local kills = L.Kills(cid)
   if kills > 0 and kills < L.MIN_LOOTS then
     -- Mist (BCD3E6), the style table's idle text colour.
     tooltip:AddLine(("Learning drops: %d of %d kills"):format(kills, L.MIN_LOOTS), 0.74, 0.83, 0.90)

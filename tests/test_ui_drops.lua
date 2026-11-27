@@ -28,7 +28,7 @@ local RM, Dr = ns.RM, ns.Drops
 local db = KennyDwarfExplorersBibleDB
 
 -- 1. SavedVariables: migration and filter defaults ----------------------------------------------
-M.check(db.schema == 2 and type(db.drops) == "table" and type(db.dropKills) == "table", "1.1.0 save migrated to schema 2 with drop tables")
+M.check(db.schema == 3 and type(db.drops) == "table" and type(db.dropKills) == "table" and type(db.dropShares) == "table" and type(db.dropShareId) == "string", "1.1.0 save migrated to schema 3 with drop tables and share id")
 M.check(db.settings.tooltip == false, "existing settings kept")
 local s = RM.Settings()
 M.check(s.filterMine == true and s.filterKnown == false and s.filterPriced == false, "only 'My professions' ticked at first")
@@ -359,7 +359,7 @@ db.settings.tooltip = nil
 tipLines = {}
 postCalls[2](GameTooltip, { guid = WOLF, lines = { { leftText = "Timber Wolf" } } })
 local tip = table.concat(tipLines, "\n")
-M.check(tip:find("from your " .. db.dropKills[299] .. " kills", 1, true) and tip:find("Linen Cloth", 1, true), "mob tooltip: rate, 'from your N kills'")
+M.check(tip:find("from " .. db.dropKills[299] .. " kills", 1, true) and not tip:find("from your ", 1, true) and tip:find("Linen Cloth", 1, true), "mob tooltip: rate, 'from N kills'")
 M.check(tip:find("Light Leather = 4%", 1, true) and tip:find("Linen Cloth = ", 1, true), "every trade good over the threshold, with its rate")
 M.check(tip:find("Linen Cloth", 1, true) < tip:find("Light Leather", 1, true), "most likely first")
 tipLines = {}
@@ -376,12 +376,13 @@ tipLines = {}
 postCalls[2](GameTooltip, { guid = "Creature-0-4372-0-1-3-00000CCCC1" })
 M.check(#tipLines == 0, "a mob you've never looted: nothing added")
 local title, sum, list = RM.DropsSummary(2589)
-M.check(title == ("Drops from (your %d kills)"):format(db.drops[299][2589].loots)
-  and sum:find("Timber Wolf", 1, true) and sum:find("from your " .. db.drops[299][2589].loots .. " kills", 1, true) and #list == 1, "material page 'Drops from'")
--- 'your N kills' counts only the mobs listed: add a second mob under 20 kills that dropped linen.
+M.check(title == ("Drops from (%d kills)"):format(db.drops[299][2589].loots)
+  and sum:find("Timber Wolf", 1, true) and sum:find("from " .. db.drops[299][2589].loots .. " kills", 1, true) and not sum:find("from your ", 1, true) and #list == 1, "material page 'Drops from'")
+-- 'N kills' counts only the mobs listed: add a second mob under 20 kills that dropped linen.
 db.drops[1922][2589] = { loots = 5, seen = 2 }
+Dr.InvalidateCombined()
 local title2, sum2, list2 = RM.DropsSummary(2589)
-M.check(title2 == title and #list2 == 1 and sum2:find("Timber Wolf", 1, true), "'your N kills' counts only the listed mobs, not the ones under 20")
+M.check(title2 == title and #list2 == 1 and sum2:find("Timber Wolf", 1, true), "'N kills' counts only the listed mobs, not the ones under 20")
 M.check(RM.DropsSummary(2934) == "Drops from", "no mob listed yet: plain 'Drops from'")
 RM.Open(2589)
 local Wd = RM.Frame()
@@ -390,7 +391,7 @@ M.check(Wd.dropsTitle:GetText() == title, "window shows the Drops from line")
 local histBefore = #st.history
 Wd.dropsToggle.scripts.OnClick(Wd.dropsToggle)
 M.check(RM.DropsOverlayShown() and Wd.dropsPanel.lines[1]:GetText():find("Timber Wolf", 1, true), "+ opens the drops list")
-M.check(Wd.dropsPanel.title:GetText() == title, "overlay header row: 'Drops from (your N kills)'")
+M.check(Wd.dropsPanel.title:GetText() == title, "overlay header row: 'Drops from (N kills)'")
 M.check(not Wd.scroll.shown, "the recipe list's scrollbar is hidden under the overlay")
 Wd.dropsPanel.close.scripts.OnClick(Wd.dropsPanel.close)
 M.check(not RM.DropsOverlayShown(), "the (-) in the overlay's header closes it")
@@ -448,6 +449,7 @@ for _, f in ipairs({ "Drops.lua", "UI.lua", "DwarfExplorersBible.lua" }) do
 end
 -- Overlay with more mobs than fit: no scrollbar, the last line says how many more.
 for cid = 5000, 5019 do db.drops[cid] = { [2934] = { loots = 20, seen = 5 } } end
+Dr.InvalidateCombined()
 RM.Navigate(2934, true); RM.SetDropsOverlay(true)
 local P, fitN = RM.Frame().dropsPanel, RM.DropsLines()
 M.check(#P.lines == fitN and fitN < 20 and P.lines[fitN].shown and P.lines[fitN]:GetText():find("+" .. (20 - fitN + 1) .. " more mobs", 1, true),
